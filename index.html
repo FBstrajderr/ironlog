@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>IronLog</title>
+
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#14161a" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="IronLog" />
+<meta name="format-detection" content="telephone=no" />
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
+<link rel="icon" href="icon-192.png" />
+
+<style>
+:root {
+  --bg: #14161a;
+  --panel: #1c1f24;
+  --panel-2: #22262b;
+  --border: #2b2f35;
+  --text: #f0f0ec;
+  --text-muted: #8a9099;
+  --accent: #e8432b;
+  --gold: #c9a227;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  min-height: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: contain;
+}
+button, .checkbox, .day-pill, .tab-btn, .week-cell {
+  -webkit-user-select: none; user-select: none;
+}
+/* 16px minimum stops iOS Safari zooming in when a field is focused */
+input, select, textarea { font-size: 16px; }
+#app {
+  min-height: 100vh;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: max(20px, env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+}
+h1 {
+  font-family: "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 900; font-size: 30px; letter-spacing: 1px;
+  margin: 0; text-transform: uppercase;
+}
+h1 .accent { color: var(--accent); }
+.head { margin-bottom: 18px; }
+.sub {
+  color: var(--text-muted); font-size: 12px;
+  letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px;
+}
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 18px;
+  border-bottom: 1px solid var(--border); overflow-x: auto;
+}
+.tab-btn {
+  background: none; border: none; color: var(--text-muted);
+  font-family: "Arial Narrow", sans-serif; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.8px; font-size: 14px;
+  padding: 13px 13px; cursor: pointer; border-bottom: 3px solid transparent;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap; min-height: 46px;
+}
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; margin-bottom: 10px;
+}
+.section-label {
+  font-family: "Arial Narrow", sans-serif; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  font-size: 12px; color: var(--text-muted);
+  margin: 20px 0 8px;
+}
+.ex-row { display: flex; align-items: center; gap: 12px; }
+.checkbox {
+  width: 44px; height: 44px; min-width: 44px; border-radius: 8px;
+  border: 2px dashed var(--text-muted); background: var(--panel-2);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 900; color: transparent; transition: all 0.15s ease;
+}
+.checkbox.checked {
+  border: 2px solid var(--gold); background: var(--gold); color: #14161a;
+  transform: rotate(-2deg); box-shadow: 0 0 0 3px rgba(201,162,39,0.18);
+}
+.ex-name { font-weight: 700; font-size: 15px; flex: 1; min-width: 0; }
+.ex-target {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  color: var(--text-muted); font-size: 11px; display: block; margin-top: 2px;
+}
+.inputs { display: flex; gap: 6px; }
+.inputs input {
+  width: 58px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 16px; text-align: center; padding: 9px 2px; min-height: 44px;
+}
+.inputs label {
+  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+  display: block; text-align: center; margin-bottom: 2px;
+}
+.empty { color: var(--text-muted); text-align: center; padding: 34px 12px; font-size: 14px; }
+.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label {
+  font-size: 10px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.field input, .field select {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 9px 8px; font-size: 14px;
+}
+.field.name input { width: 150px; }
+.field.num input, .field.num select { width: 68px; }
+.add-btn {
+  background: var(--accent); border: none; color: white; font-weight: 800;
+  text-transform: uppercase; font-size: 13px; letter-spacing: 0.5px;
+  padding: 12px 16px; border-radius: 6px; cursor: pointer; min-height: 44px;
+  display: flex; align-items: center; gap: 6px;
+}
+.plan-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.plan-item .name-input {
+  flex: 1; min-width: 100px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  font-weight: 700; padding: 9px; font-size: 14px;
+}
+.trash-btn {
+  background: none; border: 1px solid var(--border); color: var(--accent);
+  border-radius: 6px; padding: 11px 13px; cursor: pointer; font-size: 14px;
+  min-height: 44px;
+}
+.stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.stat {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; flex: 1; min-width: 0;
+}
+.stat .num {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 22px; font-weight: 700; color: var(--gold); white-space: nowrap;
+}
+.stat .lbl {
+  font-size: 10px; text-transform: uppercase;
+  color: var(--text-muted); letter-spacing: 0.5px;
+}
+select.ex-picker {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 11px;
+  font-weight: 700; margin-bottom: 12px; font-size: 14px;
+}
+.save-warn {
+  background: rgba(232,67,43,0.12); border: 1px solid var(--accent);
+  color: var(--accent); padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; margin-bottom: 12px;
+}
+.preview-note {
+  background: rgba(201,162,39,0.10); border: 1px solid rgba(201,162,39,0.4);
+  color: var(--gold); padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; margin-bottom: 12px; line-height: 1.5;
+}
+.day-banner {
+  font-family: "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px;
+  font-size: 15px; color: var(--gold);
+  border-left: 3px solid var(--gold); padding-left: 10px; margin-bottom: 14px;
+}
+.day-pills { display: flex; gap: 6px; margin-bottom: 14px; }
+.day-pill {
+  flex: 1; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-muted);
+  font-family: "Arial Narrow", sans-serif; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.5px; font-size: 13px;
+  padding: 11px 2px 9px; cursor: pointer; min-height: 50px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0;
+}
+.day-pill.active {
+  border-color: var(--gold); color: var(--text); background: var(--panel-2);
+  box-shadow: 0 0 0 2px rgba(201,162,39,0.16);
+}
+.day-pill .pill-count {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px; font-weight: 400; color: var(--gold);
+  text-transform: lowercase; letter-spacing: 0;
+}
+.day-pill.rest .pill-count { color: var(--text-muted); }
+
+/* ---- weekly overview ---- */
+.week-strip { display: flex; gap: 5px; margin-bottom: 6px; }
+.week-cell {
+  flex: 1; min-width: 0; text-align: center; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 2px 7px;
+}
+.week-cell.sel { border-color: var(--text); }
+.week-cell.is-today { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(201,162,39,0.14); }
+.week-cell .wd {
+  font-family: "Arial Narrow", sans-serif; font-weight: 800;
+  text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
+  color: var(--text-muted); margin-bottom: 5px;
+}
+.week-cell.is-today .wd { color: var(--text); }
+.mark {
+  width: 18px; height: 18px; margin: 0 auto; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; line-height: 1;
+}
+.mark.full { background: var(--gold); color: #14161a; }
+.mark.partial { border: 2px solid var(--gold); color: var(--gold); font-size: 9px; }
+.mark.missed { border: 2px solid var(--accent); color: var(--accent); font-size: 10px; }
+.mark.rest { border: 1px dashed var(--border); color: var(--text-muted); font-size: 13px; }
+.mark.upcoming { border: 1px solid var(--border); background: var(--panel-2); }
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-size: 10px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.legend .dot { width: 10px; height: 10px; border-radius: 3px; }
+.legend .dot.full { background: var(--gold); }
+.legend .dot.partial { border: 2px solid var(--gold); }
+.legend .dot.missed { border: 2px solid var(--accent); }
+.legend .dot.rest { border: 1px dashed var(--border); }
+
+/* ---- consistency grid ---- */
+.grid-wrap { display: flex; gap: 6px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
+.grid-rows {
+  display: flex; flex-direction: column; gap: 3px;
+  font-family: "Arial Narrow", sans-serif; font-size: 10px;
+  color: var(--text-muted); text-transform: uppercase; padding-top: 1px;
+}
+.grid-rows div { height: 14px; line-height: 14px; }
+.grid-cols { display: flex; gap: 3px; }
+.grid-col { display: flex; flex-direction: column; gap: 3px; }
+.cellbox { width: 14px; height: 14px; border-radius: 3px; background: var(--panel-2); cursor: pointer; }
+.cellbox.sel { box-shadow: 0 0 0 2px var(--text); }
+.detail-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 10px; padding: 14px; margin-bottom: 10px;
+}
+.detail-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  margin-bottom: 4px;
+}
+.detail-title {
+  font-family: "Arial Narrow", sans-serif; font-weight: 900;
+  text-transform: uppercase; letter-spacing: 1px; font-size: 15px; color: var(--text);
+}
+.detail-sub {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+.close-x {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px; width: 34px; height: 34px; min-width: 34px;
+  cursor: pointer; font-size: 15px; line-height: 1;
+}
+.log-line {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.log-line:last-child { border-bottom: none; }
+.log-tick {
+  width: 20px; min-width: 20px; text-align: center;
+  font-weight: 900; font-size: 14px; color: var(--gold);
+}
+.log-tick.off { color: var(--text-muted); font-weight: 400; }
+.log-body { flex: 1; min-width: 0; }
+.log-name { font-weight: 700; font-size: 14px; }
+.log-name.off { color: var(--text-muted); font-weight: 400; }
+.log-meta {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px; color: var(--text-muted); margin-top: 2px;
+}
+.detail-foot {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; color: var(--text-muted);
+}
+.detail-foot b { color: var(--gold); font-weight: 700; }
+.cellbox.full { background: var(--gold); }
+.cellbox.partial { background: rgba(201,162,39,0.42); }
+.cellbox.missed { background: rgba(232,67,43,0.32); }
+.cellbox.rest { background: var(--panel-2); }
+.cellbox.upcoming { background: transparent; border: 1px dashed var(--border); }
+.install-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: rgba(232,67,43,0.10); border: 1px solid rgba(232,67,43,0.45);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  font-size: 13px; line-height: 1.5;
+}
+.install-bar .txt { flex: 1; min-width: 180px; }
+.install-bar .ttl {
+  font-family: "Arial Narrow", sans-serif; font-weight: 900;
+  text-transform: uppercase; letter-spacing: 1px; color: var(--accent);
+  font-size: 13px; display: block; margin-bottom: 2px;
+}
+.ghost-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 11px 14px; cursor: pointer; min-height: 44px;
+  font-size: 13px; font-weight: 700;
+}
+.backup-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin-top: 8px; }
+.chart-card { height: 260px; }
+.chart-svg { width: 100%; height: 100%; display: block; }
+.chart-axis-label {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px; fill: var(--text-muted);
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  var DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var DAY_MIN = ["S", "M", "T", "W", "T", "F", "S"];
+  var WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+  // ---------- date helpers ----------
+  function toKey(d) {
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+  function todayStr() { return toKey(new Date()); }
+  function todayDow() { return new Date().getDay(); }
+  function daysAgoStr(n) { var d = new Date(); d.setDate(d.getDate() - n); return toKey(d); }
+  function dowOf(dateStr) { return new Date(dateStr + "T00:00:00").getDay(); }
+  function fmtDate(s) {
+    return new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  function mondayOfThisWeek() {
+    var d = new Date();
+    var shift = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - shift);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ---------- storage (localStorage, with in-memory fallback) ----------
+  var mem = {};
+  var storageOK = (function () {
+    try {
+      localStorage.setItem("__ironlog_test", "1");
+      localStorage.removeItem("__ironlog_test");
+      return true;
+    } catch (e) { return false; }
+  })();
+
+  function load(key, fallback) {
+    if (!storageOK) return Object.prototype.hasOwnProperty.call(mem, key) ? mem[key] : fallback;
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function save(key, value) {
+    if (!storageOK) { mem[key] = value; return true; }
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { return false; }
+  }
+  function emptyWeek() { return { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }; }
+
+  // ---------- install / platform ----------
+  var deferredPrompt = null;
+  var isStandalone = (function () {
+    try {
+      return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+             navigator.standalone === true;
+    } catch (e) { return false; }
+  })();
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "");
+  var installDismissed = false;
+
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    render();
+  });
+  window.addEventListener("appinstalled", function () {
+    deferredPrompt = null;
+    isStandalone = true;
+    render();
+  });
+
+  // ---------- backup / restore ----------
+  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs"];
+
+  function exportData() {
+    var payload = { app: "IronLog", version: 1, exportedAt: new Date().toISOString(), data: {} };
+    payload.data.ironlog_week = state.week;
+    payload.data.ironlog_day_labels = state.dayLabels;
+    payload.data.ironlog_logs = state.logs;
+    payload.data.ironlog_profile = state.profile;
+    payload.data.ironlog_weight_logs = state.weightLogs;
+    var text = JSON.stringify(payload, null, 2);
+    var name = "ironlog-backup-" + todayStr() + ".json";
+    try {
+      var blob = new Blob([text], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      flash("Backup file saved.");
+    } catch (e) {
+      copyText(text);
+    }
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        flash("Backup copied to clipboard. Paste it somewhere safe.");
+      }).catch(function () { flash("Could not copy. Try the download button."); });
+    } else {
+      flash("Copying is not supported here. Try the download button.");
+    }
+  }
+
+  function importData(text) {
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) { flash("That file is not a valid IronLog backup."); return; }
+    var d = parsed && parsed.data ? parsed.data : parsed;
+    if (!d || typeof d !== "object" || !d.ironlog_week) {
+      flash("That file is not a valid IronLog backup.");
+      return;
+    }
+    state.week = Object.assign(emptyWeek(), d.ironlog_week);
+    state.dayLabels = d.ironlog_day_labels || state.dayLabels;
+    state.logs = Array.isArray(d.ironlog_logs) ? d.ironlog_logs : [];
+    state.profile = d.ironlog_profile || state.profile;
+    state.weightLogs = Array.isArray(d.ironlog_weight_logs) ? d.ironlog_weight_logs : [];
+    persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs();
+    refreshTodayInputs();
+    var all = allExercises();
+    state.progressExKey = all.length ? all[0].key : null;
+    flash("Backup restored.");
+    render();
+  }
+
+  var flashMsg = "";
+  function flash(msg) {
+    flashMsg = msg;
+    render();
+    setTimeout(function () { flashMsg = ""; render(); }, 3500);
+  }
+
+  // ---------- demo data (only when storage is unavailable, i.e. preview) ----------
+  function seedDemo() {
+    var seed = 20260731;
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+
+    var defs = {
+      1: [["Bench Press", 4, 8, 62.5], ["Overhead Press", 3, 10, 35], ["Triceps Pushdown", 3, 12, 27.5]],
+      3: [["Deadlift", 3, 5, 110], ["Barbell Row", 4, 8, 62.5], ["Lat Pulldown", 3, 10, 52.5]],
+      5: [["Back Squat", 4, 8, 85], ["Leg Press", 3, 12, 130], ["Calf Raise", 3, 15, 45]]
+    };
+    var week = emptyWeek();
+    Object.keys(defs).forEach(function (d) {
+      week[d] = defs[d].map(function (t) {
+        return { id: uid(), name: t[0], sets: t[1], reps: t[2], weight: t[3], unit: "kg" };
+      });
+    });
+
+    var logs = [];
+    for (var back = 88; back >= 1; back--) {
+      var ds = daysAgoStr(back);
+      var dow = dowOf(ds);
+      if (!defs[dow]) continue;
+      var weeksAgo = Math.floor(back / 7);
+      if (rnd() < 0.13) continue; // occasional missed session
+      defs[dow].forEach(function (t) {
+        var drop = Math.floor(weeksAgo / 2) * 2.5;
+        var wgt = Math.max(t[3] - drop, t[3] * 0.55);
+        logs.push({
+          id: uid(), date: ds, exerciseId: "demo",
+          exerciseKey: t[0].toLowerCase(), exerciseName: t[0],
+          weight: Math.round(wgt * 2) / 2, sets: t[1], reps: t[2],
+          unit: "kg", completed: true
+        });
+      });
+    }
+
+    var weightLogs = [];
+    for (var b = 90; b >= 0; b -= 4) {
+      var w = 84.5 - (90 - b) * 0.035 + (rnd() - 0.5) * 0.7;
+      weightLogs.push({ id: uid(), date: daysAgoStr(b), weight: Math.round(w * 10) / 10 });
+    }
+
+    save("ironlog_week", week);
+    save("ironlog_day_labels", { 0: "", 1: "Push", 2: "", 3: "Pull", 4: "", 5: "Legs", 6: "" });
+    save("ironlog_logs", logs);
+    save("ironlog_weight_logs", weightLogs);
+    save("ironlog_profile", { name: "Alex", height: "182", heightUnit: "cm", weightUnit: "kg" });
+  }
+  if (!storageOK) seedDemo();
+
+  // ---------- state ----------
+  var state = {
+    week: null,
+    dayLabels: load("ironlog_day_labels", { 0: "", 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" }),
+    logs: load("ironlog_logs", []),
+    profile: load("ironlog_profile", { name: "", height: "", heightUnit: "cm", weightUnit: "kg" }),
+    weightLogs: load("ironlog_weight_logs", []),
+    tab: "today",
+    todayInputs: {},
+    newEx: { name: "", sets: 3, reps: 10, weight: 20, unit: "kg" },
+    progressExKey: null,
+    todayWeightInput: "",
+    planDay: todayDow(),
+    selectedDate: null,
+    saveError: false
+  };
+
+  (function initWeek() {
+    var stored = load("ironlog_week", null);
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+      state.week = Object.assign(emptyWeek(), stored);
+      return;
+    }
+    var oldPlan = load("ironlog_plan", null);
+    var week = emptyWeek();
+    if (Array.isArray(oldPlan) && oldPlan.length) week[todayDow()] = oldPlan;
+    state.week = week;
+    save("ironlog_week", week);
+  })();
+
+  function planFor(dow) { return state.week[dow] || []; }
+  function todayPlan() { return planFor(todayDow()); }
+  function exKey(ex) { return ex.name.trim().toLowerCase(); }
+  function logKey(l) { return l.exerciseKey || (l.exerciseName ? l.exerciseName.trim().toLowerCase() : ""); }
+
+  function allExercises() {
+    var seen = {}, out = [];
+    WEEK_ORDER.forEach(function (dow) {
+      planFor(dow).forEach(function (ex) {
+        var k = exKey(ex);
+        if (!seen[k]) { seen[k] = true; out.push({ key: k, name: ex.name, unit: ex.unit }); }
+      });
+    });
+    return out;
+  }
+
+  function refreshTodayInputs() {
+    var t = todayStr(), next = {};
+    todayPlan().forEach(function (ex) {
+      var existing = state.logs.find(function (l) { return l.exerciseId === ex.id && l.date === t; });
+      next[ex.id] = existing
+        ? { weight: existing.weight, reps: existing.reps, sets: existing.sets, completed: !!existing.completed }
+        : { weight: ex.weight, reps: ex.reps, sets: ex.sets, completed: false };
+    });
+    state.todayInputs = next;
+  }
+  refreshTodayInputs();
+
+  (function initTodayWeight() {
+    var e = state.weightLogs.find(function (w) { return w.date === todayStr(); });
+    if (e) state.todayWeightInput = String(e.weight);
+  })();
+
+  (function initProgressPick() {
+    var all = allExercises();
+    state.progressExKey = all.length ? all[0].key : null;
+  })();
+
+  function persistWeek() { if (!save("ironlog_week", state.week)) state.saveError = true; }
+  function persistDayLabels() { if (!save("ironlog_day_labels", state.dayLabels)) state.saveError = true; }
+  function persistLogs() { if (!save("ironlog_logs", state.logs)) state.saveError = true; }
+  function persistProfile() { if (!save("ironlog_profile", state.profile)) state.saveError = true; }
+  function persistWeightLogs() { if (!save("ironlog_weight_logs", state.weightLogs)) state.saveError = true; }
+
+  // ---------- actions ----------
+  function addExercise() {
+    if (!state.newEx.name.trim()) return;
+    var ex = {
+      id: uid(), name: state.newEx.name.trim(),
+      sets: Number(state.newEx.sets) || 1, reps: Number(state.newEx.reps) || 1,
+      weight: Number(state.newEx.weight) || 0, unit: state.newEx.unit
+    };
+    state.week[state.planDay] = planFor(state.planDay).concat([ex]);
+    persistWeek();
+    if (!state.progressExKey) state.progressExKey = exKey(ex);
+    state.newEx = { name: "", sets: 3, reps: 10, weight: 20, unit: ex.unit };
+    refreshTodayInputs();
+    render();
+  }
+  function removeExercise(dow, id) {
+    state.week[dow] = planFor(dow).filter(function (e) { return e.id !== id; });
+    persistWeek();
+    var all = allExercises();
+    if (!all.some(function (e) { return e.key === state.progressExKey; })) {
+      state.progressExKey = all.length ? all[0].key : null;
+    }
+    refreshTodayInputs();
+    render();
+  }
+  function updatePlanField(dow, id, field, value) {
+    var ex = planFor(dow).find(function (e) { return e.id === id; });
+    if (!ex) return;
+    ex[field] = (field === "name" || field === "unit") ? value : Number(value);
+    persistWeek();
+  }
+  function copyDay(fromDow) {
+    var source = planFor(fromDow);
+    if (!source.length) return;
+    state.week[state.planDay] = source.map(function (ex) {
+      return Object.assign({}, ex, { id: uid() });
+    });
+    persistWeek();
+    refreshTodayInputs();
+    render();
+  }
+  function clearDay(dow) {
+    state.week[dow] = [];
+    persistWeek();
+    refreshTodayInputs();
+    render();
+  }
+  function saveTodayLog(ex, overrides) {
+    overrides = overrides || {};
+    var t = todayStr();
+    var cur = Object.assign({}, state.todayInputs[ex.id], overrides);
+    var entry = {
+      id: uid(), date: t, exerciseId: ex.id, exerciseKey: exKey(ex), exerciseName: ex.name,
+      weight: Number(cur.weight) || 0, reps: Number(cur.reps) || 0, sets: Number(cur.sets) || 0,
+      unit: ex.unit, completed: !!cur.completed
+    };
+    var idx = state.logs.findIndex(function (l) { return l.exerciseId === ex.id && l.date === t; });
+    if (idx >= 0) {
+      var oldId = state.logs[idx].id;
+      state.logs[idx] = Object.assign({}, entry, { id: oldId });
+    } else {
+      state.logs.push(entry);
+    }
+    persistLogs();
+    state.todayInputs[ex.id] = cur;
+  }
+  function toggleComplete(ex) {
+    saveTodayLog(ex, { completed: !state.todayInputs[ex.id].completed });
+    render();
+  }
+  function saveTodayWeight() {
+    var val = Number(state.todayWeightInput);
+    if (!state.todayWeightInput || isNaN(val)) return;
+    var t = todayStr();
+    var idx = state.weightLogs.findIndex(function (w) { return w.date === t; });
+    if (idx >= 0) state.weightLogs[idx].weight = val;
+    else state.weightLogs.push({ id: uid(), date: t, weight: val });
+    persistWeightLogs();
+    render();
+  }
+
+  // ---------- derived ----------
+  function cutoff90() { return daysAgoStr(90); }
+
+  function dayStatus(dateStr) {
+    var t = todayStr();
+    var dow = dowOf(dateStr);
+    var planned = planFor(dow).length;
+    var done = state.logs.filter(function (l) { return l.date === dateStr && l.completed; }).length;
+    if (dateStr > t) return planned > 0 ? "upcoming" : "rest";
+    if (done > 0) return (planned > 0 && done < planned) ? "partial" : "full";
+    if (planned === 0) return "rest";
+    return dateStr === t ? "upcoming" : "missed";
+  }
+
+  function thisWeekDates() {
+    var mon = mondayOfThisWeek(), out = [];
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(mon);
+      d.setDate(mon.getDate() + i);
+      out.push(toKey(d));
+    }
+    return out;
+  }
+
+  function trainedDays90() {
+    var cutoff = cutoff90();
+    var set = {};
+    state.logs.forEach(function (l) {
+      if (l.date >= cutoff && l.completed) set[l.date] = true;
+    });
+    return Object.keys(set).length;
+  }
+
+  function plannedDays90() {
+    var count = 0;
+    for (var i = 0; i < 90; i++) {
+      var ds = daysAgoStr(i);
+      if (planFor(dowOf(ds)).length > 0) count++;
+    }
+    return count;
+  }
+
+  function adherence90() {
+    var planned = plannedDays90();
+    if (!planned) return null;
+    return Math.round((trainedDays90() / planned) * 100);
+  }
+
+  function currentStreak() {
+    // consecutive days back from today that were either trained or scheduled rest
+    var streak = 0;
+    for (var i = 0; i < 180; i++) {
+      var ds = daysAgoStr(i);
+      var st = dayStatus(ds);
+      if (i === 0 && (st === "missed" || st === "upcoming")) continue; // today still open
+      if (st === "missed") break;
+      if (st === "full" || st === "partial") streak++;
+      else if (st === "rest") continue;
+    }
+    return streak;
+  }
+
+  function chartDataForKey(key) {
+    var cutoff = cutoff90();
+    return state.logs
+      .filter(function (l) { return logKey(l) === key && l.date >= cutoff && l.completed; })
+      .sort(function (a, b) { return a.date > b.date ? 1 : -1; })
+      .map(function (l) { return { date: l.date, label: fmtDate(l.date), value: l.weight }; });
+  }
+  function weightChartData() {
+    var cutoff = cutoff90();
+    return state.weightLogs
+      .filter(function (w) { return w.date >= cutoff; })
+      .sort(function (a, b) { return a.date > b.date ? 1 : -1; })
+      .map(function (w) { return { date: w.date, label: fmtDate(w.date), value: w.weight }; });
+  }
+  function prForKey(key) {
+    var cutoff = cutoff90(), best = null;
+    state.logs.forEach(function (l) {
+      if (logKey(l) === key && l.date >= cutoff && l.completed) {
+        if (best == null || l.weight > best) best = l.weight;
+      }
+    });
+    return best;
+  }
+  function computeBMI() {
+    var h = Number(state.profile.height);
+    var wd = weightChartData();
+    var w = wd.length ? wd[wd.length - 1].value : null;
+    if (!h || !w) return null;
+    var hM = state.profile.heightUnit === "cm" ? h / 100 : h * 0.0254;
+    var wKg = state.profile.weightUnit === "kg" ? w : w * 0.453592;
+    if (!hM) return null;
+    return (wKg / (hM * hM)).toFixed(1);
+  }
+  function dayTitle(dow) {
+    var label = (state.dayLabels[dow] || "").trim();
+    return label ? DAY_NAMES[dow] + " \u00b7 " + label : DAY_NAMES[dow];
+  }
+
+  // ---------- chart ----------
+  function lineChartSVG(data, color) {
+    var w = 600, h = 220, padL = 40, padR = 10, padT = 14, padB = 24;
+    if (!data.length) return "";
+    var values = data.map(function (d) { return d.value; });
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (min === max) { min -= 1; max += 1; }
+    var pad = (max - min) * 0.12;
+    min -= pad; max += pad;
+    var xStep = data.length > 1 ? (w - padL - padR) / (data.length - 1) : 0;
+    function scaleY(v) { return padT + (h - padT - padB) * (1 - (v - min) / (max - min)); }
+    var points = data.map(function (d, i) { return [padL + i * xStep, scaleY(d.value)]; });
+    var pathD = points.map(function (p, i) {
+      return (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1);
+    }).join(" ");
+    var grid = [0, 0.5, 1].map(function (f) {
+      var y = padT + (h - padT - padB) * f;
+      return '<line x1="' + padL + '" y1="' + y + '" x2="' + (w - padR) + '" y2="' + y + '" stroke="#2b2f35" stroke-dasharray="3,3" />';
+    }).join("");
+    var yLab = [max, (max + min) / 2, min].map(function (v, i) {
+      var y = padT + (h - padT - padB) * (i * 0.5);
+      return '<text x="2" y="' + (y + 4) + '" class="chart-axis-label">' + v.toFixed(1) + "</text>";
+    }).join("");
+    var step = Math.max(1, Math.ceil(data.length / 6));
+    var xLab = data.map(function (d, i) {
+      if (i % step !== 0 && i !== data.length - 1) return "";
+      return '<text x="' + points[i][0] + '" y="' + (h - 6) + '" text-anchor="middle" class="chart-axis-label">' + d.label + "</text>";
+    }).join("");
+    var dots = points.map(function (p) {
+      return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.5" fill="' + color + '" />';
+    }).join("");
+    return '<svg class="chart-svg" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+      grid + yLab + xLab + '<path d="' + pathD + '" fill="none" stroke="' + color +
+      '" stroke-width="2.5" />' + dots + "</svg>";
+  }
+
+  // ---------- render ----------
+  var app = document.getElementById("app");
+
+  function markGlyph(st) {
+    if (st === "full") return "&#10003;";
+    if (st === "partial") return "&#189;";
+    if (st === "missed") return "&#10005;";
+    if (st === "rest") return "&middot;";
+    return "";
+  }
+
+  function weekStripHTML() {
+    var dates = thisWeekDates(), t = todayStr();
+    var html = '<div class="week-strip">';
+    dates.forEach(function (ds) {
+      var dow = dowOf(ds);
+      var st = dayStatus(ds);
+      html += '<div class="week-cell' + (ds === t ? " is-today" : "") +
+        (ds === state.selectedDate ? " sel" : "") + '" data-date="' + ds + '" title="' + esc(dayTitle(dow)) + '">' +
+        '<div class="wd">' + DAY_SHORT[dow] + "</div>" +
+        '<div class="mark ' + st + '">' + markGlyph(st) + "</div></div>";
+    });
+    html += "</div>";
+    html += '<div class="legend">' +
+      '<span><i class="dot full"></i>Trained</span>' +
+      '<span><i class="dot partial"></i>Partial</span>' +
+      '<span><i class="dot missed"></i>Missed</span>' +
+      '<span><i class="dot rest"></i>Rest</span></div>';
+    return html;
+  }
+
+  function dayDetailHTML(ds) {
+    if (!ds) return "";
+    var dow = dowOf(ds);
+    var t = todayStr();
+    var st = dayStatus(ds);
+    var dayLogs = state.logs.filter(function (l) { return l.date === ds; });
+    var doneLogs = dayLogs.filter(function (l) { return l.completed; });
+    var scheduled = planFor(dow);
+
+    var when = new Date(ds + "T00:00:00").toLocaleDateString("en-US", {
+      weekday: "long", month: "long", day: "numeric"
+    });
+    var label = (state.dayLabels[dow] || "").trim();
+
+    var statusText = { full: "Trained", partial: "Partly done", missed: "Missed", rest: "Rest day", upcoming: "Scheduled" }[st];
+    if (ds === t && st === "upcoming") statusText = "In progress";
+
+    var html = '<div class="detail-card"><div class="detail-head"><div>' +
+      '<div class="detail-title">' + esc(when) + (label ? " \u00b7 " + esc(label) : "") + "</div>" +
+      '<div class="detail-sub">' + statusText + "</div></div>" +
+      '<button class="close-x" id="closeDetail" aria-label="Close">&#10005;</button></div>';
+
+    if (doneLogs.length === 0 && dayLogs.length === 0) {
+      if (scheduled.length === 0) {
+        html += '<div class="log-meta" style="padding:12px 0">Nothing was scheduled for this day.</div>';
+      } else {
+        html += '<div class="log-meta" style="padding:12px 0 4px">' +
+          (ds >= t ? "Scheduled for this day:" : "Nothing logged. This was scheduled:") + "</div>";
+        scheduled.forEach(function (ex) {
+          html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
+            '<div class="log-name off">' + esc(ex.name) + "</div>" +
+            '<div class="log-meta">' + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
+            "</div></div>";
+        });
+      }
+      html += "</div>";
+      return html;
+    }
+
+    var loggedKeys = {};
+    dayLogs.forEach(function (l) { loggedKeys[logKey(l)] = true; });
+
+    dayLogs.forEach(function (l) {
+      html += '<div class="log-line">' +
+        '<div class="log-tick' + (l.completed ? "" : " off") + '">' + (l.completed ? "&#10003;" : "&middot;") + "</div>" +
+        '<div class="log-body"><div class="log-name' + (l.completed ? "" : " off") + '">' + esc(l.exerciseName) + "</div>" +
+        '<div class="log-meta">' + l.weight + (l.unit || "") + " \u00b7 " + l.sets + " x " + l.reps +
+        (l.completed ? "" : " \u00b7 not checked off") + "</div></div></div>";
+    });
+
+    scheduled.forEach(function (ex) {
+      if (loggedKeys[exKey(ex)]) return;
+      html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
+        '<div class="log-name off">' + esc(ex.name) + "</div>" +
+        '<div class="log-meta">skipped \u00b7 planned ' + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
+        "</div></div>";
+    });
+
+    var volume = 0, vUnit = "";
+    doneLogs.forEach(function (l) {
+      volume += (Number(l.weight) || 0) * (Number(l.sets) || 0) * (Number(l.reps) || 0);
+      if (!vUnit) vUnit = l.unit || "";
+    });
+    var bw = state.weightLogs.find(function (w) { return w.date === ds; });
+
+    html += '<div class="detail-foot">' +
+      "<span>Exercises done <b>" + doneLogs.length + "</b></span>" +
+      (volume > 0 ? "<span>Volume <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
+      (bw ? "<span>Body weight <b>" + bw.weight + state.profile.weightUnit + "</b></span>" : "") +
+      "</div>";
+
+    html += "</div>";
+    return html;
+  }
+
+  function consistencyGridHTML() {
+    var weeks = 12;
+    var mon = mondayOfThisWeek();
+    var start = new Date(mon);
+    start.setDate(mon.getDate() - 7 * (weeks - 1));
+    var html = '<div class="grid-wrap"><div class="grid-rows">';
+    WEEK_ORDER.forEach(function (d) { html += "<div>" + DAY_MIN[d] + "</div>"; });
+    html += '</div><div class="grid-cols">';
+    for (var wIdx = 0; wIdx < weeks; wIdx++) {
+      html += '<div class="grid-col">';
+      WEEK_ORDER.forEach(function (dow, rowIdx) {
+        var d = new Date(start);
+        d.setDate(start.getDate() + wIdx * 7 + rowIdx);
+        var ds = toKey(d);
+        var st = dayStatus(ds);
+        html += '<div class="cellbox ' + st + (ds === state.selectedDate ? " sel" : "") +
+          '" data-date="' + ds + '" title="' + ds + '"></div>';
+      });
+      html += "</div>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+
+  function render() {
+    var parts = [];
+    parts.push('<div class="head"><h1>Iron<span class="accent">Log</span></h1><div class="sub">' +
+      (state.profile.name ? esc(state.profile.name) + " &middot; " : "") +
+      new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) +
+      "</div></div>");
+
+    if (!storageOK) {
+      parts.push('<div class="preview-note">Preview mode with sample data. Once installed on your phone, it starts empty and saves everything you enter.</div>');
+    }
+    if (flashMsg) {
+      parts.push('<div class="preview-note">' + esc(flashMsg) + "</div>");
+    }
+    if (state.saveError) {
+      parts.push('<div class="save-warn">Could not save changes. Your device storage may be full or restricted.</div>');
+    }
+    if (!isStandalone && !installDismissed && storageOK) {
+      if (deferredPrompt) {
+        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">Install IronLog</span>' +
+          'Add it to your home screen so it opens full screen and works offline.</div>' +
+          '<button class="add-btn" id="installBtn">Install</button>' +
+          '<button class="ghost-btn" id="dismissInstall">Later</button></div>');
+      } else if (isIOS) {
+        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">Add to Home Screen</span>' +
+          'Tap the Share button at the bottom of Safari, then choose "Add to Home Screen".</div>' +
+          '<button class="ghost-btn" id="dismissInstall">Got it</button></div>');
+      }
+    }
+
+    parts.push('<div class="tabs">' +
+      '<button class="tab-btn ' + (state.tab === "today" ? "active" : "") + '" data-tab="today">&#128197; Today</button>' +
+      '<button class="tab-btn ' + (state.tab === "plan" ? "active" : "") + '" data-tab="plan">&#127947; Plan</button>' +
+      '<button class="tab-btn ' + (state.tab === "progress" ? "active" : "") + '" data-tab="progress">&#128200; Progress</button>' +
+      '<button class="tab-btn ' + (state.tab === "profile" ? "active" : "") + '" data-tab="profile">&#128100; Profile</button></div>');
+
+    if (state.tab === "today") parts.push(renderToday());
+    else if (state.tab === "plan") parts.push(renderPlan());
+    else if (state.tab === "progress") parts.push(renderProgress());
+    else parts.push(renderProfile());
+
+    app.innerHTML = parts.join("");
+    attachListeners();
+  }
+
+  function renderToday() {
+    var dow = todayDow(), plan = todayPlan();
+    var html = weekStripHTML();
+    if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
+    html += '<div class="day-banner">' + esc(dayTitle(dow)) + "</div>";
+
+    if (plan.length === 0) {
+      var anyPlanned = WEEK_ORDER.some(function (d) { return planFor(d).length > 0; });
+      html += '<div class="empty">' +
+        (anyPlanned ? "Rest day. Nothing scheduled for " + DAY_NAMES[dow] + "."
+                    : "No plan yet. Build your week in the Plan tab.") +
+        '</div><div style="text-align:center"><button class="add-btn" style="display:inline-flex" data-tab="plan">Edit ' + DAY_SHORT[dow] + "</button></div>";
+      return html;
+    }
+
+    var doneCount = plan.filter(function (ex) {
+      return state.todayInputs[ex.id] && state.todayInputs[ex.id].completed;
+    }).length;
+
+    html += '<div class="stat-row">' +
+      '<div class="stat"><div class="num">' + doneCount + "/" + plan.length + '</div><div class="lbl">Done Today</div></div>' +
+      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">Day Streak</div></div>' +
+      "</div>";
+
+    plan.forEach(function (ex) {
+      var s = state.todayInputs[ex.id] || { weight: ex.weight, sets: ex.sets, reps: ex.reps, completed: false };
+      html += '<div class="card"><div class="ex-row">' +
+        '<div class="checkbox ' + (s.completed ? "checked" : "") + '" data-action="toggle" data-id="' + ex.id + '">' +
+        (s.completed ? "&#10003;" : "") + "</div>" +
+        '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">target ' + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
+        '<div class="inputs">' +
+        '<div><label>Wt</label><input type="number" inputmode="decimal" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
+        '<div><label>Sets</label><input type="number" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
+        '<div><label>Reps</label><input type="number" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
+        "</div></div></div>";
+    });
+
+    if (doneCount === plan.length) {
+      html += '<div class="empty" style="color:var(--gold)">Workout complete. Nice work.</div>';
+    }
+    return html;
+  }
+
+  function renderPlan() {
+    var dow = state.planDay, plan = planFor(dow);
+    var html = '<div class="day-pills">';
+    WEEK_ORDER.forEach(function (d) {
+      var count = planFor(d).length;
+      html += '<button class="day-pill ' + (d === dow ? "active" : "") + (count === 0 ? " rest" : "") +
+        '" data-planday="' + d + '">' + DAY_SHORT[d] +
+        '<span class="pill-count">' + (count === 0 ? "rest" : count) + "</span></button>";
+    });
+    html += "</div>";
+
+    html += '<div class="card"><div class="add-form">' +
+      '<div class="field name"><label>' + DAY_NAMES[dow] + ' label</label><input id="dayLabel" placeholder="e.g. Push, Legs, Cardio" value="' + esc(state.dayLabels[dow] || "") + '" /></div>' +
+      '<div class="field num" style="min-width:96px"><label>Copy from</label><select id="copyFrom" style="width:96px"><option value="">Choose</option>';
+    WEEK_ORDER.forEach(function (d) {
+      if (d === dow || planFor(d).length === 0) return;
+      html += '<option value="' + d + '">' + DAY_SHORT[d] + " (" + planFor(d).length + ")</option>";
+    });
+    html += "</select></div>";
+    if (plan.length) html += '<button class="trash-btn" id="clearDayBtn">Clear day</button>';
+    html += "</div></div>";
+
+    html += '<div class="card"><div class="add-form">' +
+      '<div class="field name"><label>Exercise</label><input id="newExName" placeholder="e.g. Bench Press" value="' + esc(state.newEx.name) + '" /></div>' +
+      '<div class="field num"><label>Sets</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
+      '<div class="field num"><label>Reps</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
+      '<div class="field num"><label>Weight</label><input id="newExWeight" type="number" inputmode="decimal" value="' + state.newEx.weight + '" /></div>' +
+      '<div class="field num"><label>Unit</label><select id="newExUnit">' +
+      '<option value="kg"' + (state.newEx.unit === "kg" ? " selected" : "") + ">kg</option>" +
+      '<option value="lb"' + (state.newEx.unit === "lb" ? " selected" : "") + ">lb</option>" +
+      "</select></div>" +
+      '<button class="add-btn" id="addExBtn">&#43; Add to ' + DAY_SHORT[dow] + "</button></div></div>";
+
+    if (plan.length === 0) {
+      html += '<div class="empty">' + DAY_NAMES[dow] + " is a rest day. Add an exercise above to make it a training day.</div>";
+    }
+
+    plan.forEach(function (ex) {
+      html += '<div class="card"><div class="plan-item">' +
+        '<input class="name-input" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
+        '<div class="inputs">' +
+        '<div><label>Sets</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
+        '<div><label>Reps</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
+        '<div><label>Wt</label><input type="number" inputmode="decimal" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
+        "</div>" +
+        '<button class="trash-btn" data-action="remove" data-dow="' + dow + '" data-id="' + ex.id + '">&#128465;</button>' +
+        "</div></div>";
+    });
+    return html;
+  }
+
+  function renderProgress() {
+    var all = allExercises();
+    var html = "";
+
+    var adh = adherence90();
+    html += '<div class="stat-row">' +
+      '<div class="stat"><div class="num">' + trainedDays90() + '</div><div class="lbl">Days Trained (90d)</div></div>' +
+      '<div class="stat"><div class="num">' + (adh != null ? adh + "%" : "-") + '</div><div class="lbl">Plan Adherence</div></div>' +
+      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">Streak</div></div>' +
+      "</div>";
+
+    html += '<div class="section-label">Last 12 Weeks</div>';
+    html += '<div class="card">' + consistencyGridHTML() +
+      '<div class="legend" style="margin:12px 0 0">' +
+      '<span><i class="dot full"></i>Trained</span>' +
+      '<span><i class="dot partial"></i>Partial</span>' +
+      '<span><i class="dot missed"></i>Missed</span>' +
+      '<span><i class="dot rest"></i>Rest</span></div>' +
+      '<div class="hint">Tap any square to see what you did that day.</div></div>';
+
+    if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
+
+    if (all.length === 0) {
+      html += '<div class="empty">Add exercises to your week to track lift progress.</div>';
+      return html;
+    }
+
+    var current = all.find(function (e) { return e.key === state.progressExKey; }) || all[0];
+    var data = chartDataForKey(current.key);
+    var pr = prForKey(current.key);
+
+    html += '<div class="section-label">Lift Progress</div>';
+    html += '<select class="ex-picker" id="progressPicker">';
+    all.forEach(function (e) {
+      html += '<option value="' + esc(e.key) + '"' + (e.key === current.key ? " selected" : "") + ">" + esc(e.name) + "</option>";
+    });
+    html += "</select>";
+
+    html += '<div class="stat-row">' +
+      '<div class="stat"><div class="num">' + (pr != null ? pr + current.unit : "-") + '</div><div class="lbl">Best (90d)</div></div>' +
+      '<div class="stat"><div class="num">' + data.length + '</div><div class="lbl">Logged Sessions</div></div></div>';
+
+    html += '<div class="card chart-card">' +
+      (data.length === 0
+        ? '<div class="empty">No completed logs for this exercise in the last 3 months yet.</div>'
+        : lineChartSVG(data, "#c9a227")) + "</div>";
+    return html;
+  }
+
+  function renderProfile() {
+    var wd = weightChartData();
+    var latest = wd.length ? wd[wd.length - 1].value : null;
+    var start = wd.length ? wd[0].value : null;
+    var change = (latest != null && start != null) ? latest - start : null;
+    var bmi = computeBMI();
+
+    var html = '<div class="card"><div class="add-form">' +
+      '<div class="field name"><label>Name</label><input id="profName" placeholder="Your name" value="' + esc(state.profile.name) + '" /></div>' +
+      '<div class="field num"><label>Height</label><input id="profHeight" type="number" inputmode="decimal" value="' + esc(state.profile.height) + '" /></div>' +
+      '<div class="field num"><label>Unit</label><select id="profHeightUnit">' +
+      '<option value="cm"' + (state.profile.heightUnit === "cm" ? " selected" : "") + ">cm</option>" +
+      '<option value="in"' + (state.profile.heightUnit === "in" ? " selected" : "") + ">in</option>" +
+      "</select></div>" +
+      '<div class="field num"><label>Wt Unit</label><select id="profWeightUnit">' +
+      '<option value="kg"' + (state.profile.weightUnit === "kg" ? " selected" : "") + ">kg</option>" +
+      '<option value="lb"' + (state.profile.weightUnit === "lb" ? " selected" : "") + ">lb</option>" +
+      "</select></div></div></div>";
+
+    var changeColor = change > 0 ? "#e8432b" : (change < 0 ? "#c9a227" : "var(--text-muted)");
+    html += '<div class="stat-row">' +
+      '<div class="stat"><div class="num">' + (latest != null ? latest + state.profile.weightUnit : "-") + '</div><div class="lbl">Current Weight</div></div>' +
+      '<div class="stat"><div class="num" style="color:' + changeColor + '">' +
+      (change != null ? (change > 0 ? "+" : "") + change.toFixed(1) : "-") + '</div><div class="lbl">Change (90d)</div></div>' +
+      '<div class="stat"><div class="num">' + (bmi != null ? bmi : "-") + '</div><div class="lbl">BMI</div></div></div>';
+
+    html += '<div class="card"><div class="add-form">' +
+      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="number" inputmode="decimal" value="' + esc(state.todayWeightInput) + '" /></div>' +
+      '<button class="add-btn" id="saveWeightBtn">&#43; Save</button></div></div>';
+
+    html += '<div class="card chart-card">' +
+      (wd.length === 0
+        ? '<div class="empty">No weight logged in the last 3 months yet.</div>'
+        : lineChartSVG(wd, "#e8432b")) + "</div>";
+
+    html += '<div class="section-label">Backup</div>';
+    html += '<div class="card">' +
+      '<div class="backup-row">' +
+      '<button class="ghost-btn" id="exportBtn">Save backup file</button>' +
+      '<button class="ghost-btn" id="copyBtn">Copy backup</button>' +
+      '<button class="ghost-btn" id="importBtn">Restore from file</button>' +
+      '<input type="file" id="importFile" accept="application/json,.json" style="display:none" />' +
+      "</div>" +
+      '<div class="hint">Your data lives on this device only. Save a backup now and then, and after you get a new phone restore it here.</div>' +
+      "</div>";
+    return html;
+  }
+
+  // ---------- listeners ----------
+  function attachListeners() {
+    app.querySelectorAll("[data-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.tab = btn.getAttribute("data-tab");
+        state.selectedDate = null;
+        render();
+      });
+    });
+    app.querySelectorAll("[data-date]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var ds = el.getAttribute("data-date");
+        state.selectedDate = (state.selectedDate === ds) ? null : ds;
+        render();
+      });
+    });
+    var closeDetail = document.getElementById("closeDetail");
+    if (closeDetail) {
+      closeDetail.addEventListener("click", function () { state.selectedDate = null; render(); });
+    }
+    app.querySelectorAll("[data-planday]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.planDay = Number(btn.getAttribute("data-planday"));
+        render();
+      });
+    });
+    app.querySelectorAll('[data-action="toggle"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var ex = todayPlan().find(function (e) { return e.id === el.getAttribute("data-id"); });
+        if (ex) toggleComplete(ex);
+      });
+    });
+    app.querySelectorAll("input[data-field]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var id = el.getAttribute("data-id"), f = el.getAttribute("data-field"), p = {};
+        p[f] = el.value;
+        state.todayInputs[id] = Object.assign({}, state.todayInputs[id], p);
+      });
+      el.addEventListener("blur", function () {
+        var ex = todayPlan().find(function (e) { return e.id === el.getAttribute("data-id"); });
+        if (ex) saveTodayLog(ex);
+      });
+    });
+
+    var dayLabelEl = document.getElementById("dayLabel");
+    if (dayLabelEl) {
+      var lh = function () { state.dayLabels[state.planDay] = dayLabelEl.value; persistDayLabels(); };
+      dayLabelEl.addEventListener("change", lh);
+      dayLabelEl.addEventListener("blur", lh);
+    }
+    var copyFromEl = document.getElementById("copyFrom");
+    if (copyFromEl) {
+      copyFromEl.addEventListener("change", function () {
+        if (copyFromEl.value !== "") copyDay(Number(copyFromEl.value));
+      });
+    }
+    var clearBtn = document.getElementById("clearDayBtn");
+    if (clearBtn) clearBtn.addEventListener("click", function () { clearDay(state.planDay); });
+
+    var addBtn = document.getElementById("addExBtn");
+    if (addBtn) {
+      [["newExName", "name"], ["newExSets", "sets"], ["newExReps", "reps"], ["newExWeight", "weight"], ["newExUnit", "unit"]]
+        .forEach(function (pair) {
+          var el = document.getElementById(pair[0]);
+          if (!el) return;
+          var h = function () { state.newEx[pair[1]] = el.value; };
+          el.addEventListener("input", h);
+          el.addEventListener("change", h);
+        });
+      addBtn.addEventListener("click", addExercise);
+    }
+    app.querySelectorAll('[data-action="remove"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        removeExercise(Number(el.getAttribute("data-dow")), el.getAttribute("data-id"));
+      });
+    });
+    app.querySelectorAll("[data-plan-id]").forEach(function (el) {
+      var h = function () {
+        updatePlanField(Number(el.getAttribute("data-plan-dow")), el.getAttribute("data-plan-id"),
+          el.getAttribute("data-plan-field"), el.value);
+      };
+      el.addEventListener("change", h);
+      el.addEventListener("blur", h);
+    });
+
+    var picker = document.getElementById("progressPicker");
+    if (picker) picker.addEventListener("change", function () { state.progressExKey = picker.value; render(); });
+
+    function bind(id, key, rerender) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var h = function () { state.profile[key] = el.value; persistProfile(); if (rerender) render(); };
+      el.addEventListener("change", h);
+      if (!rerender) el.addEventListener("blur", h);
+    }
+    bind("profName", "name", false);
+    bind("profHeight", "height", false);
+    bind("profHeightUnit", "heightUnit", true);
+    bind("profWeightUnit", "weightUnit", true);
+
+    var twi = document.getElementById("todayWeightInput");
+    if (twi) {
+      twi.addEventListener("input", function () { state.todayWeightInput = twi.value; });
+      twi.addEventListener("blur", saveTodayWeight);
+    }
+    var swb = document.getElementById("saveWeightBtn");
+    if (swb) swb.addEventListener("click", saveTodayWeight);
+
+    var installBtn = document.getElementById("installBtn");
+    if (installBtn) {
+      installBtn.addEventListener("click", function () {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function () {
+          deferredPrompt = null;
+          render();
+        });
+      });
+    }
+    var dismissBtn = document.getElementById("dismissInstall");
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", function () { installDismissed = true; render(); });
+    }
+
+    var exportBtn = document.getElementById("exportBtn");
+    if (exportBtn) exportBtn.addEventListener("click", exportData);
+
+    var copyBtn = document.getElementById("copyBtn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        copyText(JSON.stringify({
+          app: "IronLog", version: 1, exportedAt: new Date().toISOString(),
+          data: {
+            ironlog_week: state.week,
+            ironlog_day_labels: state.dayLabels,
+            ironlog_logs: state.logs,
+            ironlog_profile: state.profile,
+            ironlog_weight_logs: state.weightLogs
+          }
+        }, null, 2));
+      });
+    }
+
+    var importBtn = document.getElementById("importBtn");
+    var importFile = document.getElementById("importFile");
+    if (importBtn && importFile) {
+      importBtn.addEventListener("click", function () { importFile.click(); });
+      importFile.addEventListener("change", function () {
+        var f = importFile.files && importFile.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () { importData(String(reader.result)); };
+        reader.onerror = function () { flash("Could not read that file."); };
+        reader.readAsText(f);
+      });
+    }
+  }
+
+  render();
+
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("service-worker.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
