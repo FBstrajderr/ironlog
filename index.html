@@ -1849,16 +1849,23 @@ textarea.msg-box {
         maybeNotifyNow();
         scheduleReminder();
         render();
+        if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistration) {
+          navigator.serviceWorker.getRegistration().then(function (reg) {
+            if (reg) reg.update().catch(function () {});
+          }).catch(function () {});
+        }
       }
     });
   } catch (e) {}
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("service-worker.js").then(function () {
-        pushConfigToSW();
-        if (state.reminders.enabled) registerPeriodicSync();
-      }).catch(function () {});
+      navigator.serviceWorker.register("service-worker.js", { updateViaCache: "none" })
+        .then(function (reg) {
+          pushConfigToSW();
+          if (state.reminders.enabled) registerPeriodicSync();
+          reg.update().catch(function () {});
+        }).catch(function () {});
     });
   }
 })();
