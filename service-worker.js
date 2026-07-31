@@ -1,4 +1,4 @@
-const CACHE_NAME = "ironlog-cache-v6";
+const CACHE_NAME = "ironlog-cache-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,14 +9,25 @@ const ASSETS = [
   "./icon-180.png",
 ];
 
-const DEFAULT_MESSAGES = [
-  "Idi u teretanu svinjce, grok grok",
-  "You fat as fuck boiiiiii",
-  "Gradjen/Gradjena si kao slina",
-];
+const MESSAGES_BY_GENDER = {
+  male: [
+    "Idi u teretanu svinjce, grok grok",
+    "You fat as fuck boiiiiii",
+    "Gradjen si kao slina"
+  ],
+  female: [
+    "Idi u teretanu svinjce, grok grok",
+    "You fat as fuck boiiiiii",
+    "Gradjena si kao slina"
+  ]
+};
+function messagesForGender(g) {
+  if (g === "male" || g === "female") return MESSAGES_BY_GENDER[g];
+  return MESSAGES_BY_GENDER.male.concat(MESSAGES_BY_GENDER.female);
+}
 
 const CONFIG_URL = "./ironlog-reminder-config";
-let CONFIG = { enabled: false, messages: DEFAULT_MESSAGES.slice() };
+let CONFIG = { enabled: false, gender: "" };
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -33,6 +44,10 @@ self.addEventListener("activate", (event) => {
 });
 
 // Network first for the app itself, so updates arrive without bumping versions.
+// { cache: "no-store" } is the important part -- it skips the browser's own
+// HTTP cache (which GitHub Pages sets headers for) and forces an actual
+// network round trip, otherwise "network first" can still hand back a stale
+// copy the browser already had cached at the HTTP layer.
 // Cache first for icons and manifest, which rarely change.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
@@ -43,7 +58,7 @@ self.addEventListener("fetch", (event) => {
 
   if (isAppShell) {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: "no-store" })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE_NAME).then((c) => c.put(req, copy));
@@ -72,7 +87,7 @@ self.addEventListener("message", (event) => {
   if (!d || d.type !== "ironlog-config") return;
   CONFIG = {
     enabled: !!d.enabled,
-    messages: Array.isArray(d.messages) && d.messages.length ? d.messages : DEFAULT_MESSAGES.slice(),
+    gender: d.gender === "male" || d.gender === "female" ? d.gender : ""
   };
   event.waitUntil(
     caches.open(CACHE_NAME).then((c) =>
@@ -103,7 +118,7 @@ self.addEventListener("periodicsync", (event) => {
     const cfg = await loadConfig();
     if (!cfg.enabled) return;
     await self.registration.showNotification("IronLog", {
-      body: pick(cfg.messages),
+      body: pick(messagesForGender(cfg.gender)),
       icon: "icon-192.png",
       badge: "icon-192.png",
       tag: "ironlog-daily",
