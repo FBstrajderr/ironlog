@@ -45,9 +45,16 @@ The app now has its own icon, opens full screen with no address bar, and works w
 ## Updating the app later
 
 Edit `index.html` on GitHub (open the file, click the pencil icon, commit), or upload a new
-copy with **Add file > Upload files**. Also change the version number at the top of
-`service-worker.js` (for example `ironlog-cache-v5` to `ironlog-cache-v6`), otherwise phones
-keep showing the old cached version. Close and reopen the app twice to pick up the update.
+copy with **Add file > Upload files**. That is all. The app checks for a new version whenever
+you open it with internet, so close it fully and reopen it once. No version numbers to change.
+
+## Reminders
+
+Turn the daily reminder on in the **Profile** tab, pick a time, and edit the messages.
+Phones heavily restrict what a web app may do while closed, so treat the notification as a
+bonus rather than a guarantee. What always works is the message shown inside the app on any
+day you have training planned and have not finished it. For a nag you can rely on, set a
+repeating alarm on your phone with the same text.
 
 ## Backing up your data
 
