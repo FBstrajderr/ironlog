@@ -371,10 +371,131 @@ textarea.msg-box {
 (function () {
   "use strict";
 
-  var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  var DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  var DAY_MIN = ["S", "M", "T", "W", "T", "F", "S"];
+  var DAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  var DAY_SHORT_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var DAY_MIN_EN = ["S", "M", "T", "W", "T", "F", "S"];
+  var DAY_NAMES_SR = ["Nedelja", "Ponedeljak", "Utorak", "Sreda", "Cetvrtak", "Petak", "Subota"];
+  var DAY_SHORT_SR = ["Ned", "Pon", "Uto", "Sre", "Cet", "Pet", "Sub"];
+  var DAY_MIN_SR = ["N", "P", "U", "S", "C", "P", "S"];
+  var MONTH_LONG_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var MONTH_SHORT_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var MONTH_LONG_SR = ["Januar", "Februar", "Mart", "April", "Maj", "Jun", "Jul", "Avgust", "Septembar", "Oktobar", "Novembar", "Decembar"];
+  var MONTH_SHORT_SR = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Avg", "Sep", "Okt", "Nov", "Dec"];
   var WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+  function dayNames() { return state.lang === "sr" ? DAY_NAMES_SR : DAY_NAMES_EN; }
+  function dayShort() { return state.lang === "sr" ? DAY_SHORT_SR : DAY_SHORT_EN; }
+  function dayMin() { return state.lang === "sr" ? DAY_MIN_SR : DAY_MIN_EN; }
+  function monthLong() { return state.lang === "sr" ? MONTH_LONG_SR : MONTH_LONG_EN; }
+  function monthShort() { return state.lang === "sr" ? MONTH_SHORT_SR : MONTH_SHORT_EN; }
+
+  // ---------- translations ----------
+  var STR = {
+    en: {
+      tabToday: "Today", tabPlan: "Plan", tabProgress: "Progress", tabProfile: "Profile",
+      previewNote: "Preview mode with sample data. Once installed on your phone, it starts empty and saves everything you enter.",
+      saveWarn: "Could not save changes. Your device storage may be full or restricted.",
+      installTitle: "Install IronLog", installBody: "Add it to your home screen so it opens full screen and works offline.",
+      installBtn: "Install", laterBtn: "Later",
+      iosInstallTitle: "Add to Home Screen", iosInstallBody: 'Tap the Share button at the bottom of Safari, then choose "Add to Home Screen".',
+      gotIt: "Got it",
+      doneToday: "Done Today", dayStreak: "Day Streak", daysTrained90: "Days Trained (90d)",
+      planAdherence: "Plan Adherence", streak: "Streak", best90: "Best (90d)", loggedSessions: "Logged Sessions",
+      currentWeight: "Current Weight", change90: "Change (90d)", bmi: "BMI",
+      noExYet: "No exercises yet. Add your plan in the Plan tab to get started.",
+      restDayNothing: "Rest day. Nothing scheduled for ",
+      editDay: "Edit ", workoutComplete: "Workout complete. Nice work.",
+      target: "target ", wt: "Wt", sets: "Sets", reps: "Reps",
+      dayLabelSuffix: " label", copyFrom: "Copy from", choose: "Choose",
+      clearDay: "Clear day", exercise: "Exercise", weight: "Weight", unit: "Unit",
+      addTo: "+ Add to ", restDayEmpty: " is a rest day. Add an exercise above to make it a training day.",
+      last12Weeks: "Last 12 Weeks", tapSquare: "Tap any square to see what you did that day.",
+      trained: "Trained", partial: "Partial", missed: "Missed", rest: "Rest",
+      addExToTrack: "Add exercises to your week to start tracking progress.",
+      liftProgress: "Lift Progress",
+      name: "Name", gender: "Gender", genderMale: "Male", genderFemale: "Female", genderUnset: "Not set",
+      height: "Height", wtUnit: "Wt Unit",
+      logWeightToday: "Log Weight Today", save: "+ Save",
+      noWeightYet: "No weight logged in the last 3 months yet.",
+      tapToFix: "Tap a number below to fix it, or use the \u00d7 to remove that day entirely.",
+      today: "today",
+      dailyReminder: "Daily Reminder", backup: "Backup",
+      notifUnsupported: "This browser cannot show notifications.",
+      notifBlocked: "Blocked. Allow notifications for this app in your phone settings.",
+      notifOn: "On. Fires at ", notifOnSuffix: " on days you have training planned.",
+      notifOff: "Off. The message still shows inside the app on training days.",
+      turnOff: "Turn off", turnOn: "Turn on", time: "Time", testIt: "Test it",
+      fixedMsgNote: "The message is fixed on purpose, no editing.",
+      bgLimitNote: "Phones limit what a web app can do in the background. The reminder is reliable when you open the app, and may not always fire on its own while the app is closed. For a guaranteed daily nag, set a repeating alarm on your phone with the same text.",
+      saveBackup: "Save backup file", copyBackup: "Copy backup", restoreBackup: "Restore from file",
+      backupNote: "Your data lives on this device only. Save a backup now and then, and after you get a new phone restore it here.",
+      language: "Language",
+      trainedTxt: "Trained", partlyDone: "Partly done", missedTxt: "Missed", restDayTxt: "Rest day",
+      scheduledTxt: "Scheduled", inProgressTxt: "In progress",
+      nothingScheduled: "Nothing was scheduled for this day.",
+      scheduledForDay: "Scheduled for this day:", wasScheduled: "Nothing logged. This was scheduled:",
+      notCheckedOff: " \u00b7 not checked off", skippedPlanned: "skipped \u00b7 planned ",
+      exercisesDone: "Exercises done", volume: "Volume", bodyWeight: "Body weight", remove: "remove",
+      close: "Close", isWaiting: " is waiting", noPlanYet: "No plan yet. Build your week in the Plan tab.",
+      exPlaceholder: "e.g. Bench Press", dayLabelPlaceholder: "e.g. Push, Legs, Cardio", yourName: "Your name",
+      noLogsFor90d: "No completed logs for this exercise in the last 3 months yet.",
+      addExToTrackProgress: "Add exercises to your week to track lift progress."
+    },
+    sr: {
+      tabToday: "Danas", tabPlan: "Plan", tabProgress: "Napredak", tabProfile: "Profil",
+      previewNote: "Prikaz sa test podacima. Kad instaliras na telefon, pocinje prazno i cuva sve sto unesesh.",
+      saveWarn: "Nije uspelo cuvanje. Memorija telefona je puna ili blokirana.",
+      installTitle: "Instaliraj IronLog", installBody: "Dodaj na pocetni ekran da se otvara preko celog ekrana i radi bez interneta.",
+      installBtn: "Instaliraj", laterBtn: "Kasnije",
+      iosInstallTitle: "Dodaj na pocetni ekran", iosInstallBody: 'Dodirni dugme Share u Safariju, pa izaberi "Add to Home Screen".',
+      gotIt: "Vazi",
+      doneToday: "Uradjeno Danas", dayStreak: "Niz Dana", daysTrained90: "Dana Trenirano (90d)",
+      planAdherence: "Postovanje Plana", streak: "Niz", best90: "Najbolje (90d)", loggedSessions: "Zabelezenih Treninga",
+      currentWeight: "Trenutna Tezina", change90: "Promena (90d)", bmi: "BMI",
+      noExYet: "Jos nema vezbi. Napravi plan u tabu Plan.",
+      restDayNothing: "Dan odmora. Nista nije planirano za ",
+      editDay: "Izmeni ", workoutComplete: "Trening zavrsen. Bravo.",
+      target: "cilj ", wt: "Tez", sets: "Serije", reps: "Ponav",
+      dayLabelSuffix: " naziv", copyFrom: "Kopiraj sa", choose: "Izaberi",
+      clearDay: "Obrisi dan", exercise: "Vezba", weight: "Tezina", unit: "Jed",
+      addTo: "+ Dodaj u ", restDayEmpty: " je dan odmora. Dodaj vezbu iznad da bi postao trening dan.",
+      last12Weeks: "Poslednjih 12 Nedelja", tapSquare: "Dodirni kvadratic da vidis sta si radio/la taj dan.",
+      trained: "Trenirano", partial: "Delimicno", missed: "Preskoceno", rest: "Odmor",
+      addExToTrack: "Dodaj vezbe u nedelju da pratis napredak.",
+      liftProgress: "Napredak u Tegovima",
+      name: "Ime", gender: "Pol", genderMale: "Muski", genderFemale: "Zenski", genderUnset: "Nije podeseno",
+      height: "Visina", wtUnit: "Jed. Tez",
+      logWeightToday: "Unesi Tezinu Danas", save: "+ Sacuvaj",
+      noWeightYet: "Nema unete tezine u poslednja 3 meseca.",
+      tapToFix: "Dodirni broj ispod da ga ispravish, ili \u00d7 da obrises taj dan potpuno.",
+      today: "danas",
+      dailyReminder: "Dnevni Podsetnik", backup: "Rezervna Kopija",
+      notifUnsupported: "Ovaj browser ne moze da prikazuje notifikacije.",
+      notifBlocked: "Blokirano. Dozvoli notifikacije za ovu app u podesavanjima telefona.",
+      notifOn: "Ukljuceno. Oglasava se u ", notifOnSuffix: " onih dana kad imas trening planiran.",
+      notifOff: "Iskljuceno. Poruka se i dalje prikazuje u app-u na dane treninga.",
+      turnOff: "Iskljuci", turnOn: "Ukljuci", time: "Vreme", testIt: "Testiraj",
+      fixedMsgNote: "Poruka je namerno fiksna, ne moze da se menja.",
+      bgLimitNote: "Telefoni ogranicavaju sta web app moze u pozadini. Podsetnik radi pouzdano kad otvoris app, ali mozda se nece uvek sam oglasiti dok je app zatvorena. Za pouzdan podsetnik, podesi alarm na telefonu sa istim tekstom.",
+      saveBackup: "Sacuvaj rezervnu kopiju", copyBackup: "Kopiraj rezervnu kopiju", restoreBackup: "Vrati iz fajla",
+      backupNote: "Tvoji podaci postoje samo na ovom uredjaju. Sacuvaj rezervnu kopiju s vremena na vreme, a kad dobijes novi telefon, vrati je ovde.",
+      language: "Jezik",
+      trainedTxt: "Trenirano", partlyDone: "Delimicno uradjeno", missedTxt: "Preskoceno", restDayTxt: "Dan odmora",
+      scheduledTxt: "Planirano", inProgressTxt: "U toku",
+      nothingScheduled: "Nista nije bilo planirano za ovaj dan.",
+      scheduledForDay: "Planirano za ovaj dan:", wasScheduled: "Nista nije uneto. Ovo je bilo planirano:",
+      notCheckedOff: " \u00b7 nije oznaceno", skippedPlanned: "preskoceno \u00b7 planirano ",
+      exercisesDone: "Uradjenih vezbi", volume: "Obim", bodyWeight: "Tezina", remove: "obrisi",
+      close: "Zatvori", isWaiting: " ceka", noPlanYet: "Jos nema plana. Napravi nedelju u tabu Plan.",
+      exPlaceholder: "npr. Bench Press", dayLabelPlaceholder: "npr. Guranje, Noge, Kardio", yourName: "Tvoje ime",
+      noLogsFor90d: "Jos nema zabelezenih treninga za ovu vezbu u poslednja 3 meseca.",
+      addExToTrackProgress: "Dodaj vezbe u nedelju da pratis napredak u tegovima."
+    }
+  };
+  function t(key) {
+    var d = STR[state.lang] || STR.en;
+    return (key in d) ? d[key] : STR.en[key];
+  }
 
   // ---------- date helpers ----------
   function toKey(d) {
@@ -387,7 +508,11 @@ textarea.msg-box {
   function daysAgoStr(n) { var d = new Date(); d.setDate(d.getDate() - n); return toKey(d); }
   function dowOf(dateStr) { return new Date(dateStr + "T00:00:00").getDay(); }
   function fmtDate(s) {
-    return new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    var d = new Date(s + "T00:00:00");
+    return monthShort()[d.getMonth()] + " " + d.getDate();
+  }
+  function fmtLongDate(d) {
+    return dayNames()[d.getDay()] + ", " + monthLong()[d.getMonth()] + " " + d.getDate();
   }
   function mondayOfThisWeek() {
     var d = new Date();
@@ -433,22 +558,31 @@ textarea.msg-box {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch (e) { return false; }
   }
-  var DEFAULT_MESSAGES = [
-    "Idi u teretanu svinjce, grok grok",
-    "You fat as fuck boiiiiii",
-    "Gradjen/Gradjena si kao slina"
-  ];
+  // Fixed on purpose. Not user-editable, not translated -- these stay exactly
+  // as intended regardless of the app language setting.
+  var MESSAGES_BY_GENDER = {
+    male: [
+      "Idi u teretanu svinjce, grok grok",
+      "You fat as fuck boiiiiii",
+      "Gradjen si kao slina"
+    ],
+    female: [
+      "Idi u teretanu svinjce, grok grok",
+      "You fat as fuck boiiiiii",
+      "Gradjena si kao slina"
+    ]
+  };
+  function messagesForGender(g) {
+    if (g === "male" || g === "female") return MESSAGES_BY_GENDER[g];
+    return MESSAGES_BY_GENDER.male.concat(MESSAGES_BY_GENDER.female);
+  }
 
   function normalizeReminders(r) {
     r = r || {};
-    var msgs = Array.isArray(r.messages) ? r.messages.filter(function (m) {
-      return String(m).trim().length > 0;
-    }) : [];
     return {
       enabled: !!r.enabled,
       hour: typeof r.hour === "number" ? r.hour : 18,
       minute: typeof r.minute === "number" ? r.minute : 0,
-      messages: msgs.length ? msgs : DEFAULT_MESSAGES.slice(),
       lastNotified: r.lastNotified || ""
     };
   }
@@ -483,8 +617,7 @@ textarea.msg-box {
   function notifPermission() { return notifSupported() ? Notification.permission : "unsupported"; }
 
   function pickMessage() {
-    var m = state.reminders.messages;
-    if (!m.length) return DEFAULT_MESSAGES[0];
+    var m = messagesForGender(state.profile.gender);
     return m[Math.floor(Math.random() * m.length)];
   }
   var sessionMessage = null;
@@ -555,7 +688,7 @@ textarea.msg-box {
         navigator.serviceWorker.controller.postMessage({
           type: "ironlog-config",
           enabled: state.reminders.enabled,
-          messages: state.reminders.messages
+          gender: state.profile.gender || ""
         });
       }
     } catch (e) {}
@@ -720,7 +853,7 @@ textarea.msg-box {
     save("ironlog_day_labels", { 0: "", 1: "Push", 2: "", 3: "Pull", 4: "", 5: "Legs", 6: "" });
     save("ironlog_logs", logs);
     save("ironlog_weight_logs", weightLogs);
-    save("ironlog_profile", { name: "Alex", height: "182", heightUnit: "cm", weightUnit: "kg" });
+    save("ironlog_profile", { name: "Alex", gender: "male", height: "182", heightUnit: "cm", weightUnit: "kg" });
   }
   if (!storageOK) seedDemo();
 
@@ -729,9 +862,10 @@ textarea.msg-box {
     week: null,
     dayLabels: load("ironlog_day_labels", { 0: "", 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" }),
     logs: load("ironlog_logs", []),
-    profile: load("ironlog_profile", { name: "", height: "", heightUnit: "cm", weightUnit: "kg" }),
+    profile: load("ironlog_profile", { name: "", gender: "", height: "", heightUnit: "cm", weightUnit: "kg" }),
     weightLogs: load("ironlog_weight_logs", []),
     reminders: normalizeReminders(load("ironlog_reminders", null)),
+    lang: load("ironlog_lang", "en"),
     tab: "today",
     todayInputs: {},
     newEx: { name: "", sets: 3, reps: 10, weight: 20, unit: "kg" },
@@ -802,6 +936,7 @@ textarea.msg-box {
     if (!save("ironlog_reminders", state.reminders)) state.saveError = true;
     pushConfigToSW();
   }
+  function persistLang() { if (!save("ironlog_lang", state.lang)) state.saveError = true; }
 
   // ---------- actions ----------
   function addExercise() {
@@ -1001,7 +1136,7 @@ textarea.msg-box {
   }
   function dayTitle(dow) {
     var label = (state.dayLabels[dow] || "").trim();
-    return label ? DAY_NAMES[dow] + " \u00b7 " + label : DAY_NAMES[dow];
+    return label ? dayNames()[dow] + " \u00b7 " + label : dayNames()[dow];
   }
 
   // ---------- chart ----------
@@ -1052,53 +1187,54 @@ textarea.msg-box {
   }
 
   function weekStripHTML() {
-    var dates = thisWeekDates(), t = todayStr();
+    var dates = thisWeekDates(), todayD = todayStr();
     var html = '<div class="week-strip">';
     dates.forEach(function (ds) {
       var dow = dowOf(ds);
       var st = dayStatus(ds);
-      html += '<div class="week-cell' + (ds === t ? " is-today" : "") +
+      html += '<div class="week-cell' + (ds === todayD ? " is-today" : "") +
         (ds === state.selectedDate ? " sel" : "") + '" data-date="' + ds + '" title="' + esc(dayTitle(dow)) + '">' +
-        '<div class="wd">' + DAY_SHORT[dow] + "</div>" +
+        '<div class="wd">' + dayShort()[dow] + "</div>" +
         '<div class="mark ' + st + '">' + markGlyph(st) + "</div></div>";
     });
     html += "</div>";
     html += '<div class="legend">' +
-      '<span><i class="dot full"></i>Trained</span>' +
-      '<span><i class="dot partial"></i>Partial</span>' +
-      '<span><i class="dot missed"></i>Missed</span>' +
-      '<span><i class="dot rest"></i>Rest</span></div>';
+      '<span><i class="dot full"></i>' + t("trained") + '</span>' +
+      '<span><i class="dot partial"></i>' + t("partial") + '</span>' +
+      '<span><i class="dot missed"></i>' + t("missed") + '</span>' +
+      '<span><i class="dot rest"></i>' + t("rest") + "</span></div>";
     return html;
   }
 
   function dayDetailHTML(ds) {
     if (!ds) return "";
     var dow = dowOf(ds);
-    var t = todayStr();
+    var todayD = todayStr();
     var st = dayStatus(ds);
     var dayLogs = state.logs.filter(function (l) { return l.date === ds; });
     var doneLogs = dayLogs.filter(function (l) { return l.completed; });
     var scheduled = planFor(dow);
 
-    var when = new Date(ds + "T00:00:00").toLocaleDateString("en-US", {
-      weekday: "long", month: "long", day: "numeric"
-    });
+    var when = fmtLongDate(new Date(ds + "T00:00:00"));
     var label = (state.dayLabels[dow] || "").trim();
 
-    var statusText = { full: "Trained", partial: "Partly done", missed: "Missed", rest: "Rest day", upcoming: "Scheduled" }[st];
-    if (ds === t && st === "upcoming") statusText = "In progress";
+    var statusText = {
+      full: t("trainedTxt"), partial: t("partlyDone"), missed: t("missedTxt"),
+      rest: t("restDayTxt"), upcoming: t("scheduledTxt")
+    }[st];
+    if (ds === todayD && st === "upcoming") statusText = t("inProgressTxt");
 
     var html = '<div class="detail-card"><div class="detail-head"><div>' +
       '<div class="detail-title">' + esc(when) + (label ? " \u00b7 " + esc(label) : "") + "</div>" +
       '<div class="detail-sub">' + statusText + "</div></div>" +
-      '<button class="close-x" id="closeDetail" aria-label="Close">&#10005;</button></div>';
+      '<button class="close-x" id="closeDetail" aria-label="' + t("close") + '">&#10005;</button></div>';
 
     if (doneLogs.length === 0 && dayLogs.length === 0) {
       if (scheduled.length === 0) {
-        html += '<div class="log-meta" style="padding:12px 0">Nothing was scheduled for this day.</div>';
+        html += '<div class="log-meta" style="padding:12px 0">' + t("nothingScheduled") + "</div>";
       } else {
         html += '<div class="log-meta" style="padding:12px 0 4px">' +
-          (ds >= t ? "Scheduled for this day:" : "Nothing logged. This was scheduled:") + "</div>";
+          (ds >= todayD ? t("scheduledForDay") : t("wasScheduled")) + "</div>";
         scheduled.forEach(function (ex) {
           html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
             '<div class="log-name off">' + esc(ex.name) + "</div>" +
@@ -1118,14 +1254,14 @@ textarea.msg-box {
         '<div class="log-tick' + (l.completed ? "" : " off") + '">' + (l.completed ? "&#10003;" : "&middot;") + "</div>" +
         '<div class="log-body"><div class="log-name' + (l.completed ? "" : " off") + '">' + esc(l.exerciseName) + "</div>" +
         '<div class="log-meta">' + l.weight + (l.unit || "") + " \u00b7 " + l.sets + " x " + l.reps +
-        (l.completed ? "" : " \u00b7 not checked off") + "</div></div></div>";
+        (l.completed ? "" : t("notCheckedOff")) + "</div></div></div>";
     });
 
     scheduled.forEach(function (ex) {
       if (loggedKeys[exKey(ex)]) return;
       html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
         '<div class="log-name off">' + esc(ex.name) + "</div>" +
-        '<div class="log-meta">skipped \u00b7 planned ' + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
+        '<div class="log-meta">' + t("skippedPlanned") + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
         "</div></div>";
     });
 
@@ -1137,10 +1273,10 @@ textarea.msg-box {
     var bw = state.weightLogs.find(function (w) { return w.date === ds; });
 
     html += '<div class="detail-foot">' +
-      "<span>Exercises done <b>" + doneLogs.length + "</b></span>" +
-      (volume > 0 ? "<span>Volume <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
-      (bw ? "<span>Body weight <b>" + bw.weight + state.profile.weightUnit +
-        '</b> &nbsp;<a href="#" class="del-weight-link" data-date="' + ds + '">remove</a></span>' : "") +
+      "<span>" + t("exercisesDone") + " <b>" + doneLogs.length + "</b></span>" +
+      (volume > 0 ? "<span>" + t("volume") + " <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
+      (bw ? "<span>" + t("bodyWeight") + " <b>" + bw.weight + state.profile.weightUnit +
+        '</b> &nbsp;<a href="#" class="del-weight-link" data-date="' + ds + '">' + t("remove") + "</a></span>" : "") +
       "</div>";
 
     html += "</div>";
@@ -1153,7 +1289,7 @@ textarea.msg-box {
     var start = new Date(mon);
     start.setDate(mon.getDate() - 7 * (weeks - 1));
     var html = '<div class="grid-wrap"><div class="grid-rows">';
-    WEEK_ORDER.forEach(function (d) { html += "<div>" + DAY_MIN[d] + "</div>"; });
+    WEEK_ORDER.forEach(function (d) { html += "<div>" + dayMin()[d] + "</div>"; });
     html += '</div><div class="grid-cols">';
     for (var wIdx = 0; wIdx < weeks; wIdx++) {
       html += '<div class="grid-col">';
@@ -1175,36 +1311,36 @@ textarea.msg-box {
     var parts = [];
     parts.push('<div class="head"><h1>Iron<span class="accent">Log</span></h1><div class="sub">' +
       (state.profile.name ? esc(state.profile.name) + " &middot; " : "") +
-      new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) +
+      fmtLongDate(new Date()) +
       "</div></div>");
 
     if (!storageOK) {
-      parts.push('<div class="preview-note">Preview mode with sample data. Once installed on your phone, it starts empty and saves everything you enter.</div>');
+      parts.push('<div class="preview-note">' + t("previewNote") + "</div>");
     }
     if (flashMsg) {
       parts.push('<div class="preview-note">' + esc(flashMsg) + "</div>");
     }
     if (state.saveError) {
-      parts.push('<div class="save-warn">Could not save changes. Your device storage may be full or restricted.</div>');
+      parts.push('<div class="save-warn">' + t("saveWarn") + "</div>");
     }
     if (!isStandalone && !installDismissed && storageOK) {
       if (deferredPrompt) {
-        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">Install IronLog</span>' +
-          'Add it to your home screen so it opens full screen and works offline.</div>' +
-          '<button class="add-btn" id="installBtn">Install</button>' +
-          '<button class="ghost-btn" id="dismissInstall">Later</button></div>');
+        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">' + t("installTitle") + "</span>" +
+          t("installBody") + "</div>" +
+          '<button class="add-btn" id="installBtn">' + t("installBtn") + "</button>" +
+          '<button class="ghost-btn" id="dismissInstall">' + t("laterBtn") + "</button></div>");
       } else if (isIOS) {
-        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">Add to Home Screen</span>' +
-          'Tap the Share button at the bottom of Safari, then choose "Add to Home Screen".</div>' +
-          '<button class="ghost-btn" id="dismissInstall">Got it</button></div>');
+        parts.push('<div class="install-bar"><div class="txt"><span class="ttl">' + t("iosInstallTitle") + "</span>" +
+          t("iosInstallBody") + "</div>" +
+          '<button class="ghost-btn" id="dismissInstall">' + t("gotIt") + "</button></div>");
       }
     }
 
     parts.push('<div class="tabs">' +
-      '<button class="tab-btn ' + (state.tab === "today" ? "active" : "") + '" data-tab="today">&#128197; Today</button>' +
-      '<button class="tab-btn ' + (state.tab === "plan" ? "active" : "") + '" data-tab="plan">&#127947; Plan</button>' +
-      '<button class="tab-btn ' + (state.tab === "progress" ? "active" : "") + '" data-tab="progress">&#128200; Progress</button>' +
-      '<button class="tab-btn ' + (state.tab === "profile" ? "active" : "") + '" data-tab="profile">&#128100; Profile</button></div>');
+      '<button class="tab-btn ' + (state.tab === "today" ? "active" : "") + '" data-tab="today">&#128197; ' + t("tabToday") + "</button>" +
+      '<button class="tab-btn ' + (state.tab === "plan" ? "active" : "") + '" data-tab="plan">&#127947; ' + t("tabPlan") + "</button>" +
+      '<button class="tab-btn ' + (state.tab === "progress" ? "active" : "") + '" data-tab="progress">&#128200; ' + t("tabProgress") + "</button>" +
+      '<button class="tab-btn ' + (state.tab === "profile" ? "active" : "") + '" data-tab="profile">&#128100; ' + t("tabProfile") + "</button></div>");
 
     if (state.tab === "today") parts.push(renderToday());
     else if (state.tab === "plan") parts.push(renderPlan());
@@ -1220,7 +1356,7 @@ textarea.msg-box {
     var html = "";
     if (workoutPending()) {
       html += '<div class="nag-bar"><div class="msg">' + esc(currentMessage()) + "</div>" +
-        '<div class="sub2">' + esc(dayTitle(dow)) + " is waiting</div></div>";
+        '<div class="sub2">' + esc(dayTitle(dow)) + t("isWaiting") + "</div></div>";
     }
     html += weekStripHTML();
     if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
@@ -1229,9 +1365,9 @@ textarea.msg-box {
     if (plan.length === 0) {
       var anyPlanned = WEEK_ORDER.some(function (d) { return planFor(d).length > 0; });
       html += '<div class="empty">' +
-        (anyPlanned ? "Rest day. Nothing scheduled for " + DAY_NAMES[dow] + "."
-                    : "No plan yet. Build your week in the Plan tab.") +
-        '</div><div style="text-align:center"><button class="add-btn" style="display:inline-flex" data-tab="plan">Edit ' + DAY_SHORT[dow] + "</button></div>";
+        (anyPlanned ? t("restDayNothing") + dayNames()[dow] + "."
+                    : t("noPlanYet")) +
+        '</div><div style="text-align:center"><button class="add-btn" style="display:inline-flex" data-tab="plan">' + t("editDay") + dayShort()[dow] + "</button></div>";
       return html;
     }
 
@@ -1240,8 +1376,8 @@ textarea.msg-box {
     }).length;
 
     html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + doneCount + "/" + plan.length + '</div><div class="lbl">Done Today</div></div>' +
-      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">Day Streak</div></div>' +
+      '<div class="stat"><div class="num">' + doneCount + "/" + plan.length + '</div><div class="lbl">' + t("doneToday") + '</div></div>' +
+      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">' + t("dayStreak") + '</div></div>' +
       "</div>";
 
     plan.forEach(function (ex) {
@@ -1249,16 +1385,16 @@ textarea.msg-box {
       html += '<div class="card"><div class="ex-row">' +
         '<div class="checkbox ' + (s.completed ? "checked" : "") + '" data-action="toggle" data-id="' + ex.id + '">' +
         (s.completed ? "&#10003;" : "") + "</div>" +
-        '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">target ' + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
+        '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
         '<div class="inputs">' +
-        '<div><label>Wt</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
-        '<div><label>Sets</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
-        '<div><label>Reps</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
+        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
+        '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
+        '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
         "</div></div></div>";
     });
 
     if (doneCount === plan.length) {
-      html += '<div class="empty" style="color:var(--gold)">Workout complete. Nice work.</div>';
+      html += '<div class="empty" style="color:var(--gold)">' + t("workoutComplete") + "</div>";
     }
     return html;
   }
@@ -1269,44 +1405,44 @@ textarea.msg-box {
     WEEK_ORDER.forEach(function (d) {
       var count = planFor(d).length;
       html += '<button class="day-pill ' + (d === dow ? "active" : "") + (count === 0 ? " rest" : "") +
-        '" data-planday="' + d + '">' + DAY_SHORT[d] +
-        '<span class="pill-count">' + (count === 0 ? "rest" : count) + "</span></button>";
+        '" data-planday="' + d + '">' + dayShort()[d] +
+        '<span class="pill-count">' + (count === 0 ? t("rest") : count) + "</span></button>";
     });
     html += "</div>";
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field name"><label>' + DAY_NAMES[dow] + ' label</label><input id="dayLabel" placeholder="e.g. Push, Legs, Cardio" value="' + esc(state.dayLabels[dow] || "") + '" /></div>' +
-      '<div class="field num" style="min-width:96px"><label>Copy from</label><select id="copyFrom" style="width:96px"><option value="">Choose</option>';
+      '<div class="field name"><label>' + dayNames()[dow] + t("dayLabelSuffix") + '</label><input id="dayLabel" placeholder="' + t("dayLabelPlaceholder") + '" value="' + esc(state.dayLabels[dow] || "") + '" /></div>' +
+      '<div class="field num" style="min-width:96px"><label>' + t("copyFrom") + '</label><select id="copyFrom" style="width:96px"><option value="">' + t("choose") + '</option>';
     WEEK_ORDER.forEach(function (d) {
       if (d === dow || planFor(d).length === 0) return;
-      html += '<option value="' + d + '">' + DAY_SHORT[d] + " (" + planFor(d).length + ")</option>";
+      html += '<option value="' + d + '">' + dayShort()[d] + " (" + planFor(d).length + ")</option>";
     });
     html += "</select></div>";
-    if (plan.length) html += '<button class="trash-btn" id="clearDayBtn">Clear day</button>';
+    if (plan.length) html += '<button class="trash-btn" id="clearDayBtn">' + t("clearDay") + "</button>";
     html += "</div></div>";
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field name"><label>Exercise</label><input id="newExName" placeholder="e.g. Bench Press" value="' + esc(state.newEx.name) + '" /></div>' +
-      '<div class="field num"><label>Sets</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
-      '<div class="field num"><label>Reps</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
-      '<div class="field num"><label>Weight</label><input id="newExWeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + state.newEx.weight + '" /></div>' +
-      '<div class="field num"><label>Unit</label><select id="newExUnit">' +
+      '<div class="field name"><label>' + t("exercise") + '</label><input id="newExName" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" /></div>' +
+      '<div class="field num"><label>' + t("sets") + '</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
+      '<div class="field num"><label>' + t("reps") + '</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
+      '<div class="field num"><label>' + t("weight") + '</label><input id="newExWeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + state.newEx.weight + '" /></div>' +
+      '<div class="field num"><label>' + t("unit") + '</label><select id="newExUnit">' +
       '<option value="kg"' + (state.newEx.unit === "kg" ? " selected" : "") + ">kg</option>" +
       '<option value="lb"' + (state.newEx.unit === "lb" ? " selected" : "") + ">lb</option>" +
       "</select></div>" +
-      '<button class="add-btn" id="addExBtn">&#43; Add to ' + DAY_SHORT[dow] + "</button></div></div>";
+      '<button class="add-btn" id="addExBtn">' + t("addTo") + dayShort()[dow] + "</button></div></div>";
 
     if (plan.length === 0) {
-      html += '<div class="empty">' + DAY_NAMES[dow] + " is a rest day. Add an exercise above to make it a training day.</div>";
+      html += '<div class="empty">' + dayNames()[dow] + t("restDayEmpty") + "</div>";
     }
 
     plan.forEach(function (ex) {
       html += '<div class="card"><div class="plan-item">' +
         '<input class="name-input" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
         '<div class="inputs">' +
-        '<div><label>Sets</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
-        '<div><label>Reps</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
-        '<div><label>Wt</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
+        '<div><label>' + t("sets") + '</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
+        '<div><label>' + t("reps") + '</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
+        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
         "</div>" +
         '<button class="trash-btn" data-action="remove" data-dow="' + dow + '" data-id="' + ex.id + '">&#128465;</button>' +
         "</div></div>";
@@ -1320,24 +1456,24 @@ textarea.msg-box {
 
     var adh = adherence90();
     html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + trainedDays90() + '</div><div class="lbl">Days Trained (90d)</div></div>' +
-      '<div class="stat"><div class="num">' + (adh != null ? adh + "%" : "-") + '</div><div class="lbl">Plan Adherence</div></div>' +
-      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">Streak</div></div>' +
+      '<div class="stat"><div class="num">' + trainedDays90() + '</div><div class="lbl">' + t("daysTrained90") + '</div></div>' +
+      '<div class="stat"><div class="num">' + (adh != null ? adh + "%" : "-") + '</div><div class="lbl">' + t("planAdherence") + '</div></div>' +
+      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">' + t("streak") + '</div></div>' +
       "</div>";
 
-    html += '<div class="section-label">Last 12 Weeks</div>';
+    html += '<div class="section-label">' + t("last12Weeks") + "</div>";
     html += '<div class="card">' + consistencyGridHTML() +
       '<div class="legend" style="margin:12px 0 0">' +
-      '<span><i class="dot full"></i>Trained</span>' +
-      '<span><i class="dot partial"></i>Partial</span>' +
-      '<span><i class="dot missed"></i>Missed</span>' +
-      '<span><i class="dot rest"></i>Rest</span></div>' +
-      '<div class="hint">Tap any square to see what you did that day.</div></div>';
+      '<span><i class="dot full"></i>' + t("trained") + '</span>' +
+      '<span><i class="dot partial"></i>' + t("partial") + '</span>' +
+      '<span><i class="dot missed"></i>' + t("missed") + '</span>' +
+      '<span><i class="dot rest"></i>' + t("rest") + '</span></div>' +
+      '<div class="hint">' + t("tapSquare") + "</div></div>";
 
     if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
 
     if (all.length === 0) {
-      html += '<div class="empty">Add exercises to your week to track lift progress.</div>';
+      html += '<div class="empty">' + t("addExToTrackProgress") + "</div>";
       return html;
     }
 
@@ -1345,7 +1481,7 @@ textarea.msg-box {
     var data = chartDataForKey(current.key);
     var pr = prForKey(current.key);
 
-    html += '<div class="section-label">Lift Progress</div>';
+    html += '<div class="section-label">' + t("liftProgress") + "</div>";
     html += '<select class="ex-picker" id="progressPicker">';
     all.forEach(function (e) {
       html += '<option value="' + esc(e.key) + '"' + (e.key === current.key ? " selected" : "") + ">" + esc(e.name) + "</option>";
@@ -1353,12 +1489,12 @@ textarea.msg-box {
     html += "</select>";
 
     html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + (pr != null ? pr + current.unit : "-") + '</div><div class="lbl">Best (90d)</div></div>' +
-      '<div class="stat"><div class="num">' + data.length + '</div><div class="lbl">Logged Sessions</div></div></div>';
+      '<div class="stat"><div class="num">' + (pr != null ? pr + current.unit : "-") + '</div><div class="lbl">' + t("best90") + '</div></div>' +
+      '<div class="stat"><div class="num">' + data.length + '</div><div class="lbl">' + t("loggedSessions") + "</div></div></div>";
 
     html += '<div class="card chart-card">' +
       (data.length === 0
-        ? '<div class="empty">No completed logs for this exercise in the last 3 months yet.</div>'
+        ? '<div class="empty">' + t("noLogsFor90d") + "</div>"
         : lineChartSVG(data, "#c9a227")) + "</div>";
     return html;
   }
@@ -1369,88 +1505,97 @@ textarea.msg-box {
     var start = wd.length ? wd[0].value : null;
     var change = (latest != null && start != null) ? latest - start : null;
     var bmi = computeBMI();
+    var g = state.profile.gender || "";
 
     var html = '<div class="card"><div class="add-form">' +
-      '<div class="field name"><label>Name</label><input id="profName" placeholder="Your name" value="' + esc(state.profile.name) + '" /></div>' +
-      '<div class="field num"><label>Height</label><input id="profHeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.profile.height) + '" /></div>' +
-      '<div class="field num"><label>Unit</label><select id="profHeightUnit">' +
+      '<div class="field name"><label>' + t("name") + '</label><input id="profName" placeholder="' + t("yourName") + '" value="' + esc(state.profile.name) + '" /></div>' +
+      '<div class="field num"><label>' + t("gender") + '</label><select id="profGender">' +
+      '<option value=""' + (g === "" ? " selected" : "") + ">" + t("genderUnset") + "</option>" +
+      '<option value="male"' + (g === "male" ? " selected" : "") + ">" + t("genderMale") + "</option>" +
+      '<option value="female"' + (g === "female" ? " selected" : "") + ">" + t("genderFemale") + "</option>" +
+      "</select></div>" +
+      '<div class="field num"><label>' + t("height") + '</label><input id="profHeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.profile.height) + '" /></div>' +
+      '<div class="field num"><label>' + t("unit") + '</label><select id="profHeightUnit">' +
       '<option value="cm"' + (state.profile.heightUnit === "cm" ? " selected" : "") + ">cm</option>" +
       '<option value="in"' + (state.profile.heightUnit === "in" ? " selected" : "") + ">in</option>" +
       "</select></div>" +
-      '<div class="field num"><label>Wt Unit</label><select id="profWeightUnit">' +
+      '<div class="field num"><label>' + t("wtUnit") + '</label><select id="profWeightUnit">' +
       '<option value="kg"' + (state.profile.weightUnit === "kg" ? " selected" : "") + ">kg</option>" +
       '<option value="lb"' + (state.profile.weightUnit === "lb" ? " selected" : "") + ">lb</option>" +
-      "</select></div></div></div>";
+      "</select></div>" +
+      '<div class="field num"><label>' + t("language") + '</label><select id="profLang">' +
+      '<option value="en"' + (state.lang === "en" ? " selected" : "") + ">English</option>" +
+      '<option value="sr"' + (state.lang === "sr" ? " selected" : "") + ">Srpski</option>" +
+      "</select></div>" +
+      "</div></div>";
 
     var changeColor = change > 0 ? "#e8432b" : (change < 0 ? "#c9a227" : "var(--text-muted)");
     html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + (latest != null ? latest + state.profile.weightUnit : "-") + '</div><div class="lbl">Current Weight</div></div>' +
+      '<div class="stat"><div class="num">' + (latest != null ? latest + state.profile.weightUnit : "-") + '</div><div class="lbl">' + t("currentWeight") + '</div></div>' +
       '<div class="stat"><div class="num" style="color:' + changeColor + '">' +
-      (change != null ? (change > 0 ? "+" : "") + change.toFixed(1) : "-") + '</div><div class="lbl">Change (90d)</div></div>' +
-      '<div class="stat"><div class="num">' + (bmi != null ? bmi : "-") + '</div><div class="lbl">BMI</div></div></div>';
+      (change != null ? (change > 0 ? "+" : "") + change.toFixed(1) : "-") + '</div><div class="lbl">' + t("change90") + '</div></div>' +
+      '<div class="stat"><div class="num">' + (bmi != null ? bmi : "-") + '</div><div class="lbl">' + t("bmi") + "</div></div></div>";
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.todayWeightInput) + '" /></div>' +
-      '<button class="add-btn" id="saveWeightBtn">&#43; Save</button>' +
+      '<div class="field num"><label>' + t("logWeightToday") + '</label><input id="todayWeightInput" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.todayWeightInput) + '" /></div>' +
+      '<button class="add-btn" id="saveWeightBtn">' + t("save") + "</button>" +
       "</div></div>";
 
     html += '<div class="card chart-card">' +
       (wd.length === 0
-        ? '<div class="empty">No weight logged in the last 3 months yet.</div>'
+        ? '<div class="empty">' + t("noWeightYet") + "</div>"
         : lineChartSVG(wd, "#e8432b")) + "</div>";
 
     if (wd.length > 0) {
-      html += '<div class="hint" style="margin:-4px 0 8px">Tap a number below to fix it, or use the &times; to remove that day entirely.</div>';
+      html += '<div class="hint" style="margin:-4px 0 8px">' + t("tapToFix") + "</div>";
       html += '<div class="card weight-log">';
       wd.slice().reverse().forEach(function (w, i) {
         var isToday = w.date === todayStr();
         html += '<div class="wlog-row' + (i === 0 ? "" : "") + '">' +
-          '<div class="wlog-date">' + esc(w.label) + (isToday ? ' <span class="wlog-today">today</span>' : "") + "</div>" +
+          '<div class="wlog-date">' + esc(w.label) + (isToday ? ' <span class="wlog-today">' + t("today") + "</span>" : "") + "</div>" +
           '<div class="wlog-controls">' +
           '<input type="text" inputmode="decimal" class="dec-input wlog-input" pattern="[0-9]*[.,]?[0-9]*" data-wdate="' + w.date + '" value="' + w.value + '" />' +
           '<span class="wlog-unit">' + esc(state.profile.weightUnit) + "</span>" +
-          '<button class="wlog-del" data-wdate="' + w.date + '" aria-label="Remove entry">&#10005;</button>' +
+          '<button class="wlog-del" data-wdate="' + w.date + '" aria-label="' + t("remove") + '">&#10005;</button>' +
           "</div></div>";
       });
       html += "</div>";
     }
 
-    html += '<div class="section-label">Daily Reminder</div>';
+    html += '<div class="section-label">' + t("dailyReminder") + "</div>";
     var perm = notifPermission();
     var on = state.reminders.enabled && perm === "granted";
     var hh = String(state.reminders.hour).padStart(2, "0");
     var mm = String(state.reminders.minute).padStart(2, "0");
     var statusLine;
-    if (perm === "unsupported") statusLine = "This browser cannot show notifications.";
-    else if (perm === "denied") statusLine = "Blocked. Allow notifications for this app in your phone settings.";
-    else if (on) statusLine = "On. Fires at " + hh + ":" + mm + " on days you have training planned.";
-    else statusLine = "Off. The message still shows inside the app on training days.";
+    if (perm === "unsupported") statusLine = t("notifUnsupported");
+    else if (perm === "denied") statusLine = t("notifBlocked");
+    else if (on) statusLine = t("notifOn") + hh + ":" + mm + t("notifOnSuffix");
+    else statusLine = t("notifOff");
 
     html += '<div class="card">' +
       '<div class="detail-sub" style="margin-bottom:12px">' + esc(statusLine) + "</div>" +
       '<div class="backup-row">' +
       (on
-        ? '<button class="ghost-btn" id="remOff">Turn off</button>'
-        : '<button class="add-btn" id="remOn">Turn on</button>') +
-      '<div class="field num" style="width:auto"><label>Time</label>' +
+        ? '<button class="ghost-btn" id="remOff">' + t("turnOff") + "</button>"
+        : '<button class="add-btn" id="remOn">' + t("turnOn") + "</button>") +
+      '<div class="field num" style="width:auto"><label>' + t("time") + '</label>' +
       '<input type="time" id="remTime" value="' + hh + ":" + mm + '" style="width:120px" /></div>' +
-      '<button class="ghost-btn" id="remTest">Test it</button>' +
+      '<button class="ghost-btn" id="remTest">' + t("testIt") + "</button>" +
       "</div>" +
-      '<div class="hint" style="margin-top:12px">Messages, one per line. Edit them however you like.</div>' +
-      '<textarea class="msg-box" id="remMsgs" style="margin-top:6px">' +
-      esc(state.reminders.messages.join("\n")) + "</textarea>" +
-      '<div class="hint">Phones limit what a web app can do in the background. The reminder is reliable when you open the app, and may not always fire on its own while the app is closed. For a guaranteed daily nag, set a repeating alarm on your phone with the same text.</div>' +
+      '<div class="hint" style="margin-top:12px">' + t("fixedMsgNote") + "</div>" +
+      '<div class="hint">' + t("bgLimitNote") + "</div>" +
       "</div>";
 
-    html += '<div class="section-label">Backup</div>';
+    html += '<div class="section-label">' + t("backup") + "</div>";
     html += '<div class="card">' +
       '<div class="backup-row">' +
-      '<button class="ghost-btn" id="exportBtn">Save backup file</button>' +
-      '<button class="ghost-btn" id="copyBtn">Copy backup</button>' +
-      '<button class="ghost-btn" id="importBtn">Restore from file</button>' +
+      '<button class="ghost-btn" id="exportBtn">' + t("saveBackup") + "</button>" +
+      '<button class="ghost-btn" id="copyBtn">' + t("copyBackup") + "</button>" +
+      '<button class="ghost-btn" id="importBtn">' + t("restoreBackup") + "</button>" +
       '<input type="file" id="importFile" accept="application/json,.json" style="display:none" />' +
       "</div>" +
-      '<div class="hint">Your data lives on this device only. Save a backup now and then, and after you get a new phone restore it here.</div>' +
+      '<div class="hint">' + t("backupNote") + "</div>" +
       "</div>";
     return html;
   }
@@ -1572,6 +1717,26 @@ textarea.msg-box {
     bind("profHeightUnit", "heightUnit", true);
     bind("profWeightUnit", "weightUnit", true);
 
+    var profGender = document.getElementById("profGender");
+    if (profGender) {
+      profGender.addEventListener("change", function () {
+        state.profile.gender = profGender.value;
+        persistProfile();
+        sessionMessage = null; // pick a fresh message that matches the new gender
+        pushConfigToSW();
+        render();
+      });
+    }
+
+    var profLang = document.getElementById("profLang");
+    if (profLang) {
+      profLang.addEventListener("change", function () {
+        state.lang = profLang.value;
+        persistLang();
+        render();
+      });
+    }
+
     var twi = document.getElementById("todayWeightInput");
     if (twi) {
       twi.addEventListener("input", function () { state.todayWeightInput = twi.value; });
@@ -1636,18 +1801,6 @@ textarea.msg-box {
           flash(pickMessage());
         }
       });
-    }
-
-    var remMsgs = document.getElementById("remMsgs");
-    if (remMsgs) {
-      var saveMsgs = function () {
-        var lines = String(remMsgs.value).split("\n").map(function (l) { return l.trim(); })
-          .filter(function (l) { return l.length > 0; });
-        state.reminders.messages = lines.length ? lines : DEFAULT_MESSAGES.slice();
-        persistReminders();
-      };
-      remMsgs.addEventListener("change", saveMsgs);
-      remMsgs.addEventListener("blur", saveMsgs);
     }
 
     var exportBtn = document.getElementById("exportBtn");
