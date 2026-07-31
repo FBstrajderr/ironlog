@@ -290,6 +290,26 @@ select.ex-picker {
 .cellbox.missed { background: rgba(232,67,43,0.32); }
 .cellbox.rest { background: var(--panel-2); }
 .cellbox.upcoming { background: transparent; border: 1px dashed var(--border); }
+.nag-bar {
+  background: rgba(232,67,43,0.12); border: 1px solid rgba(232,67,43,0.5);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px; padding: 13px 15px; margin-bottom: 12px;
+}
+.nag-bar .msg {
+  font-family: "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 17px; line-height: 1.25; color: var(--accent);
+}
+.nag-bar .sub2 {
+  font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-top: 5px;
+}
+textarea.msg-box {
+  width: 100%; min-height: 96px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  padding: 10px; font-size: 16px; font-family: inherit; line-height: 1.5;
+  resize: vertical;
+}
 .install-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   background: rgba(232,67,43,0.10); border: 1px solid rgba(232,67,43,0.45);
@@ -350,6 +370,14 @@ select.ex-picker {
     return d;
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  // Accepts "20.5" and "20,5" (comma is the decimal separator on many keyboards)
+  function parseNum(v) {
+    if (typeof v === "number") return v;
+    var n = parseFloat(String(v == null ? "" : v).replace(",", "."));
+    return isNaN(n) ? 0 : n;
+  }
+  function parseInt2(v) { return Math.round(parseNum(v)); }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -378,6 +406,26 @@ select.ex-picker {
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch (e) { return false; }
   }
+  var DEFAULT_MESSAGES = [
+    "Idi u teretanu svinjce, grok grok",
+    "You fat as fuck boiiiiii",
+    "Gradjen/Gradjena si kao slina"
+  ];
+
+  function normalizeReminders(r) {
+    r = r || {};
+    var msgs = Array.isArray(r.messages) ? r.messages.filter(function (m) {
+      return String(m).trim().length > 0;
+    }) : [];
+    return {
+      enabled: !!r.enabled,
+      hour: typeof r.hour === "number" ? r.hour : 18,
+      minute: typeof r.minute === "number" ? r.minute : 0,
+      messages: msgs.length ? msgs : DEFAULT_MESSAGES.slice(),
+      lastNotified: r.lastNotified || ""
+    };
+  }
+
   function emptyWeek() { return { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }; }
 
   // ---------- install / platform ----------
@@ -403,6 +451,134 @@ select.ex-picker {
   });
 
   // ---------- backup / restore ----------
+  // ---------- reminders / notifications ----------
+  function notifSupported() { return typeof Notification !== "undefined"; }
+  function notifPermission() { return notifSupported() ? Notification.permission : "unsupported"; }
+
+  function pickMessage() {
+    var m = state.reminders.messages;
+    if (!m.length) return DEFAULT_MESSAGES[0];
+    return m[Math.floor(Math.random() * m.length)];
+  }
+  var sessionMessage = null;
+  function currentMessage() {
+    if (!sessionMessage) sessionMessage = pickMessage();
+    return sessionMessage;
+  }
+
+  function workoutPending() {
+    var plan = todayPlan();
+    if (plan.length === 0) return false;
+    var done = plan.filter(function (ex) {
+      return state.todayInputs[ex.id] && state.todayInputs[ex.id].completed;
+    }).length;
+    return done < plan.length;
+  }
+
+  function showNotification(body) {
+    var opts = {
+      body: body, icon: "icon-192.png", badge: "icon-192.png",
+      tag: "ironlog-daily", renotify: true, requireInteraction: false
+    };
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+        navigator.serviceWorker.ready.then(function (reg) {
+          reg.showNotification("IronLog", opts);
+        }).catch(function () {
+          try { new Notification("IronLog", opts); } catch (e) {}
+        });
+      } else {
+        new Notification("IronLog", opts);
+      }
+    } catch (e) {}
+  }
+
+  function maybeNotifyNow() {
+    if (!state.reminders.enabled) return;
+    if (notifPermission() !== "granted") return;
+    if (!workoutPending()) return;
+    if (state.reminders.lastNotified === todayStr()) return;
+    var now = new Date();
+    var mins = now.getHours() * 60 + now.getMinutes();
+    if (mins < state.reminders.hour * 60 + state.reminders.minute) return;
+    state.reminders.lastNotified = todayStr();
+    persistReminders();
+    showNotification(pickMessage());
+  }
+
+  var reminderTimer = null;
+  function scheduleReminder() {
+    if (reminderTimer) { clearTimeout(reminderTimer); reminderTimer = null; }
+    if (!state.reminders.enabled) return;
+    var now = new Date();
+    var target = new Date();
+    target.setHours(state.reminders.hour, state.reminders.minute, 0, 0);
+    if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+    var delay = target.getTime() - now.getTime();
+    if (delay > 2147483000) return;
+    reminderTimer = setTimeout(function () {
+      maybeNotifyNow();
+      scheduleReminder();
+    }, delay);
+  }
+
+  function pushConfigToSW() {
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: "ironlog-config",
+          enabled: state.reminders.enabled,
+          messages: state.reminders.messages
+        });
+      }
+    } catch (e) {}
+  }
+
+  function registerPeriodicSync() {
+    try {
+      if (!navigator.serviceWorker) return;
+      navigator.serviceWorker.ready.then(function (reg) {
+        if (!reg.periodicSync) return null;
+        return reg.periodicSync.register("ironlog-daily", { minInterval: 12 * 60 * 60 * 1000 });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function enableReminders() {
+    if (!notifSupported()) {
+      flash("This browser cannot show notifications. The in app reminder still works.");
+      return;
+    }
+    var req;
+    try { req = Notification.requestPermission(); } catch (e) { req = null; }
+    if (req && typeof req.then === "function") {
+      req.then(function (p) { afterPermission(p); });
+    } else {
+      Notification.requestPermission(function (p) { afterPermission(p); });
+    }
+  }
+
+  function afterPermission(p) {
+    if (p === "granted") {
+      state.reminders.enabled = true;
+      state.reminders.lastNotified = "";
+      persistReminders();
+      scheduleReminder();
+      registerPeriodicSync();
+      flash("Reminders on. Test it below to check it works on your phone.");
+    } else {
+      flash("Your phone blocked notifications. Allow them for this app in your phone settings, then try again.");
+    }
+    render();
+  }
+
+  function disableReminders() {
+    state.reminders.enabled = false;
+    persistReminders();
+    if (reminderTimer) { clearTimeout(reminderTimer); reminderTimer = null; }
+    render();
+  }
+
   var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs"];
 
   function exportData() {
@@ -412,6 +588,7 @@ select.ex-picker {
     payload.data.ironlog_logs = state.logs;
     payload.data.ironlog_profile = state.profile;
     payload.data.ironlog_weight_logs = state.weightLogs;
+    payload.data.ironlog_reminders = state.reminders;
     var text = JSON.stringify(payload, null, 2);
     var name = "ironlog-backup-" + todayStr() + ".json";
     try {
@@ -454,6 +631,7 @@ select.ex-picker {
     state.logs = Array.isArray(d.ironlog_logs) ? d.ironlog_logs : [];
     state.profile = d.ironlog_profile || state.profile;
     state.weightLogs = Array.isArray(d.ironlog_weight_logs) ? d.ironlog_weight_logs : [];
+    if (d.ironlog_reminders) { state.reminders = normalizeReminders(d.ironlog_reminders); persistReminders(); }
     persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs();
     refreshTodayInputs();
     var all = allExercises();
@@ -526,6 +704,7 @@ select.ex-picker {
     logs: load("ironlog_logs", []),
     profile: load("ironlog_profile", { name: "", height: "", heightUnit: "cm", weightUnit: "kg" }),
     weightLogs: load("ironlog_weight_logs", []),
+    reminders: normalizeReminders(load("ironlog_reminders", null)),
     tab: "today",
     todayInputs: {},
     newEx: { name: "", sets: 3, reps: 10, weight: 20, unit: "kg" },
@@ -592,14 +771,18 @@ select.ex-picker {
   function persistLogs() { if (!save("ironlog_logs", state.logs)) state.saveError = true; }
   function persistProfile() { if (!save("ironlog_profile", state.profile)) state.saveError = true; }
   function persistWeightLogs() { if (!save("ironlog_weight_logs", state.weightLogs)) state.saveError = true; }
+  function persistReminders() {
+    if (!save("ironlog_reminders", state.reminders)) state.saveError = true;
+    pushConfigToSW();
+  }
 
   // ---------- actions ----------
   function addExercise() {
     if (!state.newEx.name.trim()) return;
     var ex = {
       id: uid(), name: state.newEx.name.trim(),
-      sets: Number(state.newEx.sets) || 1, reps: Number(state.newEx.reps) || 1,
-      weight: Number(state.newEx.weight) || 0, unit: state.newEx.unit
+      sets: parseInt2(state.newEx.sets) || 1, reps: parseInt2(state.newEx.reps) || 1,
+      weight: parseNum(state.newEx.weight) || 0, unit: state.newEx.unit
     };
     state.week[state.planDay] = planFor(state.planDay).concat([ex]);
     persistWeek();
@@ -621,7 +804,8 @@ select.ex-picker {
   function updatePlanField(dow, id, field, value) {
     var ex = planFor(dow).find(function (e) { return e.id === id; });
     if (!ex) return;
-    ex[field] = (field === "name" || field === "unit") ? value : Number(value);
+    ex[field] = (field === "name" || field === "unit") ? value
+      : (field === "weight" ? parseNum(value) : parseInt2(value));
     persistWeek();
   }
   function copyDay(fromDow) {
@@ -646,7 +830,7 @@ select.ex-picker {
     var cur = Object.assign({}, state.todayInputs[ex.id], overrides);
     var entry = {
       id: uid(), date: t, exerciseId: ex.id, exerciseKey: exKey(ex), exerciseName: ex.name,
-      weight: Number(cur.weight) || 0, reps: Number(cur.reps) || 0, sets: Number(cur.sets) || 0,
+      weight: parseNum(cur.weight) || 0, reps: parseInt2(cur.reps) || 0, sets: parseInt2(cur.sets) || 0,
       unit: ex.unit, completed: !!cur.completed
     };
     var idx = state.logs.findIndex(function (l) { return l.exerciseId === ex.id && l.date === t; });
@@ -657,19 +841,22 @@ select.ex-picker {
       state.logs.push(entry);
     }
     persistLogs();
-    state.todayInputs[ex.id] = cur;
+    state.todayInputs[ex.id] = {
+      weight: entry.weight, sets: entry.sets, reps: entry.reps, completed: entry.completed
+    };
   }
   function toggleComplete(ex) {
     saveTodayLog(ex, { completed: !state.todayInputs[ex.id].completed });
     render();
   }
   function saveTodayWeight() {
-    var val = Number(state.todayWeightInput);
-    if (!state.todayWeightInput || isNaN(val)) return;
+    var val = parseNum(state.todayWeightInput);
+    if (!String(state.todayWeightInput).trim() || val <= 0) return;
     var t = todayStr();
     var idx = state.weightLogs.findIndex(function (w) { return w.date === t; });
     if (idx >= 0) state.weightLogs[idx].weight = val;
     else state.weightLogs.push({ id: uid(), date: t, weight: val });
+    state.todayWeightInput = String(val);
     persistWeightLogs();
     render();
   }
@@ -760,7 +947,7 @@ select.ex-picker {
     return best;
   }
   function computeBMI() {
-    var h = Number(state.profile.height);
+    var h = parseNum(state.profile.height);
     var wd = weightChartData();
     var w = wd.length ? wd[wd.length - 1].value : null;
     if (!h || !w) return null;
@@ -901,7 +1088,7 @@ select.ex-picker {
 
     var volume = 0, vUnit = "";
     doneLogs.forEach(function (l) {
-      volume += (Number(l.weight) || 0) * (Number(l.sets) || 0) * (Number(l.reps) || 0);
+      volume += (parseNum(l.weight) || 0) * (parseNum(l.sets) || 0) * (parseNum(l.reps) || 0);
       if (!vUnit) vUnit = l.unit || "";
     });
     var bw = state.weightLogs.find(function (w) { return w.date === ds; });
@@ -986,7 +1173,12 @@ select.ex-picker {
 
   function renderToday() {
     var dow = todayDow(), plan = todayPlan();
-    var html = weekStripHTML();
+    var html = "";
+    if (workoutPending()) {
+      html += '<div class="nag-bar"><div class="msg">' + esc(currentMessage()) + "</div>" +
+        '<div class="sub2">' + esc(dayTitle(dow)) + " is waiting</div></div>";
+    }
+    html += weekStripHTML();
     if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
     html += '<div class="day-banner">' + esc(dayTitle(dow)) + "</div>";
 
@@ -1015,9 +1207,9 @@ select.ex-picker {
         (s.completed ? "&#10003;" : "") + "</div>" +
         '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">target ' + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
         '<div class="inputs">' +
-        '<div><label>Wt</label><input type="number" inputmode="decimal" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
-        '<div><label>Sets</label><input type="number" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
-        '<div><label>Reps</label><input type="number" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
+        '<div><label>Wt</label><input type="number" step="any" inputmode="decimal" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
+        '<div><label>Sets</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
+        '<div><label>Reps</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
         "</div></div></div>";
     });
 
@@ -1053,7 +1245,7 @@ select.ex-picker {
       '<div class="field name"><label>Exercise</label><input id="newExName" placeholder="e.g. Bench Press" value="' + esc(state.newEx.name) + '" /></div>' +
       '<div class="field num"><label>Sets</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
       '<div class="field num"><label>Reps</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
-      '<div class="field num"><label>Weight</label><input id="newExWeight" type="number" inputmode="decimal" value="' + state.newEx.weight + '" /></div>' +
+      '<div class="field num"><label>Weight</label><input id="newExWeight" type="number" step="any" inputmode="decimal" value="' + state.newEx.weight + '" /></div>' +
       '<div class="field num"><label>Unit</label><select id="newExUnit">' +
       '<option value="kg"' + (state.newEx.unit === "kg" ? " selected" : "") + ">kg</option>" +
       '<option value="lb"' + (state.newEx.unit === "lb" ? " selected" : "") + ">lb</option>" +
@@ -1070,7 +1262,7 @@ select.ex-picker {
         '<div class="inputs">' +
         '<div><label>Sets</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
         '<div><label>Reps</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
-        '<div><label>Wt</label><input type="number" inputmode="decimal" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
+        '<div><label>Wt</label><input type="number" step="any" inputmode="decimal" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
         "</div>" +
         '<button class="trash-btn" data-action="remove" data-dow="' + dow + '" data-id="' + ex.id + '">&#128465;</button>' +
         "</div></div>";
@@ -1136,7 +1328,7 @@ select.ex-picker {
 
     var html = '<div class="card"><div class="add-form">' +
       '<div class="field name"><label>Name</label><input id="profName" placeholder="Your name" value="' + esc(state.profile.name) + '" /></div>' +
-      '<div class="field num"><label>Height</label><input id="profHeight" type="number" inputmode="decimal" value="' + esc(state.profile.height) + '" /></div>' +
+      '<div class="field num"><label>Height</label><input id="profHeight" type="number" step="any" inputmode="decimal" value="' + esc(state.profile.height) + '" /></div>' +
       '<div class="field num"><label>Unit</label><select id="profHeightUnit">' +
       '<option value="cm"' + (state.profile.heightUnit === "cm" ? " selected" : "") + ">cm</option>" +
       '<option value="in"' + (state.profile.heightUnit === "in" ? " selected" : "") + ">in</option>" +
@@ -1154,13 +1346,40 @@ select.ex-picker {
       '<div class="stat"><div class="num">' + (bmi != null ? bmi : "-") + '</div><div class="lbl">BMI</div></div></div>';
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="number" inputmode="decimal" value="' + esc(state.todayWeightInput) + '" /></div>' +
+      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="number" step="any" inputmode="decimal" value="' + esc(state.todayWeightInput) + '" /></div>' +
       '<button class="add-btn" id="saveWeightBtn">&#43; Save</button></div></div>';
 
     html += '<div class="card chart-card">' +
       (wd.length === 0
         ? '<div class="empty">No weight logged in the last 3 months yet.</div>'
         : lineChartSVG(wd, "#e8432b")) + "</div>";
+
+    html += '<div class="section-label">Daily Reminder</div>';
+    var perm = notifPermission();
+    var on = state.reminders.enabled && perm === "granted";
+    var hh = String(state.reminders.hour).padStart(2, "0");
+    var mm = String(state.reminders.minute).padStart(2, "0");
+    var statusLine;
+    if (perm === "unsupported") statusLine = "This browser cannot show notifications.";
+    else if (perm === "denied") statusLine = "Blocked. Allow notifications for this app in your phone settings.";
+    else if (on) statusLine = "On. Fires at " + hh + ":" + mm + " on days you have training planned.";
+    else statusLine = "Off. The message still shows inside the app on training days.";
+
+    html += '<div class="card">' +
+      '<div class="detail-sub" style="margin-bottom:12px">' + esc(statusLine) + "</div>" +
+      '<div class="backup-row">' +
+      (on
+        ? '<button class="ghost-btn" id="remOff">Turn off</button>'
+        : '<button class="add-btn" id="remOn">Turn on</button>') +
+      '<div class="field num" style="width:auto"><label>Time</label>' +
+      '<input type="time" id="remTime" value="' + hh + ":" + mm + '" style="width:120px" /></div>' +
+      '<button class="ghost-btn" id="remTest">Test it</button>' +
+      "</div>" +
+      '<div class="hint" style="margin-top:12px">Messages, one per line. Edit them however you like.</div>' +
+      '<textarea class="msg-box" id="remMsgs" style="margin-top:6px">' +
+      esc(state.reminders.messages.join("\n")) + "</textarea>" +
+      '<div class="hint">Phones limit what a web app can do in the background. The reminder is reliable when you open the app, and may not always fire on its own while the app is closed. For a guaranteed daily nag, set a repeating alarm on your phone with the same text.</div>' +
+      "</div>";
 
     html += '<div class="section-label">Backup</div>';
     html += '<div class="card">' +
@@ -1299,6 +1518,51 @@ select.ex-picker {
       dismissBtn.addEventListener("click", function () { installDismissed = true; render(); });
     }
 
+    var remOn = document.getElementById("remOn");
+    if (remOn) remOn.addEventListener("click", enableReminders);
+    var remOff = document.getElementById("remOff");
+    if (remOff) remOff.addEventListener("click", disableReminders);
+
+    var remTime = document.getElementById("remTime");
+    if (remTime) {
+      remTime.addEventListener("change", function () {
+        var parts = String(remTime.value || "").split(":");
+        if (parts.length !== 2) return;
+        var h = parseInt2(parts[0]), m = parseInt2(parts[1]);
+        if (h < 0 || h > 23 || m < 0 || m > 59) return;
+        state.reminders.hour = h;
+        state.reminders.minute = m;
+        state.reminders.lastNotified = "";
+        persistReminders();
+        scheduleReminder();
+        render();
+      });
+    }
+
+    var remTest = document.getElementById("remTest");
+    if (remTest) {
+      remTest.addEventListener("click", function () {
+        if (notifPermission() === "granted") {
+          showNotification(pickMessage());
+          flash("Sent. If nothing appeared, notifications are blocked in your phone settings.");
+        } else {
+          flash(pickMessage());
+        }
+      });
+    }
+
+    var remMsgs = document.getElementById("remMsgs");
+    if (remMsgs) {
+      var saveMsgs = function () {
+        var lines = String(remMsgs.value).split("\n").map(function (l) { return l.trim(); })
+          .filter(function (l) { return l.length > 0; });
+        state.reminders.messages = lines.length ? lines : DEFAULT_MESSAGES.slice();
+        persistReminders();
+      };
+      remMsgs.addEventListener("change", saveMsgs);
+      remMsgs.addEventListener("blur", saveMsgs);
+    }
+
     var exportBtn = document.getElementById("exportBtn");
     if (exportBtn) exportBtn.addEventListener("click", exportData);
 
@@ -1312,7 +1576,8 @@ select.ex-picker {
             ironlog_day_labels: state.dayLabels,
             ironlog_logs: state.logs,
             ironlog_profile: state.profile,
-            ironlog_weight_logs: state.weightLogs
+            ironlog_weight_logs: state.weightLogs,
+            ironlog_reminders: state.reminders
           }
         }, null, 2));
       });
@@ -1335,9 +1600,25 @@ select.ex-picker {
 
   render();
 
+  scheduleReminder();
+  maybeNotifyNow();
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        refreshTodayInputs();
+        maybeNotifyNow();
+        scheduleReminder();
+        render();
+      }
+    });
+  } catch (e) {}
+
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("service-worker.js").catch(function () {});
+      navigator.serviceWorker.register("service-worker.js").then(function () {
+        pushConfigToSW();
+        if (state.reminders.enabled) registerPeriodicSync();
+      }).catch(function () {});
     });
   }
 })();
