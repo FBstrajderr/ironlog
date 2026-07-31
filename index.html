@@ -285,6 +285,7 @@ select.ex-picker {
   font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; color: var(--text-muted);
 }
 .detail-foot b { color: var(--gold); font-weight: 700; }
+.del-weight-link { color: var(--accent); font-size: 11px; text-decoration: underline; }
 .cellbox.full { background: var(--gold); }
 .cellbox.partial { background: rgba(201,162,39,0.42); }
 .cellbox.missed { background: rgba(232,67,43,0.32); }
@@ -329,6 +330,32 @@ textarea.msg-box {
 }
 .backup-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin-top: 8px; }
+.weight-log { padding: 4px 14px; max-height: 340px; overflow-y: auto; }
+.wlog-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.wlog-row:last-child { border-bottom: none; }
+.wlog-date {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px; color: var(--text); white-space: nowrap;
+}
+.wlog-today {
+  font-family: "Arial Narrow", sans-serif; font-size: 9px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--gold); border: 1px solid rgba(201,162,39,0.4);
+  border-radius: 20px; padding: 2px 6px; margin-left: 4px;
+}
+.wlog-controls { display: flex; align-items: center; gap: 6px; }
+.wlog-input {
+  width: 70px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 16px; text-align: center; padding: 8px 2px; min-height: 40px;
+}
+.wlog-unit { font-size: 11px; color: var(--text-muted); min-width: 20px; }
+.wlog-del {
+  background: none; border: 1px solid var(--border); color: var(--accent);
+  border-radius: 6px; width: 36px; height: 36px; cursor: pointer; font-size: 13px;
+}
 .chart-card { height: 260px; }
 .chart-svg { width: 100%; height: 100%; display: block; }
 .chart-axis-label {
@@ -860,6 +887,22 @@ textarea.msg-box {
     persistWeightLogs();
     render();
   }
+  function clearWeightForDate(dateStr) {
+    state.weightLogs = state.weightLogs.filter(function (w) { return w.date !== dateStr; });
+    if (dateStr === todayStr()) state.todayWeightInput = "";
+    persistWeightLogs();
+    render();
+  }
+  function editWeightForDate(dateStr, rawValue) {
+    var val = parseNum(rawValue);
+    if (!String(rawValue).trim() || val <= 0) return;
+    var idx = state.weightLogs.findIndex(function (w) { return w.date === dateStr; });
+    if (idx < 0) return;
+    state.weightLogs[idx].weight = val;
+    if (dateStr === todayStr()) state.todayWeightInput = String(val);
+    persistWeightLogs();
+    render();
+  }
 
   // ---------- derived ----------
   function cutoff90() { return daysAgoStr(90); }
@@ -1096,7 +1139,8 @@ textarea.msg-box {
     html += '<div class="detail-foot">' +
       "<span>Exercises done <b>" + doneLogs.length + "</b></span>" +
       (volume > 0 ? "<span>Volume <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
-      (bw ? "<span>Body weight <b>" + bw.weight + state.profile.weightUnit + "</b></span>" : "") +
+      (bw ? "<span>Body weight <b>" + bw.weight + state.profile.weightUnit +
+        '</b> &nbsp;<a href="#" class="del-weight-link" data-date="' + ds + '">remove</a></span>' : "") +
       "</div>";
 
     html += "</div>";
@@ -1347,12 +1391,29 @@ textarea.msg-box {
 
     html += '<div class="card"><div class="add-form">' +
       '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="number" step="any" inputmode="decimal" value="' + esc(state.todayWeightInput) + '" /></div>' +
-      '<button class="add-btn" id="saveWeightBtn">&#43; Save</button></div></div>';
+      '<button class="add-btn" id="saveWeightBtn">&#43; Save</button>' +
+      "</div></div>";
 
     html += '<div class="card chart-card">' +
       (wd.length === 0
         ? '<div class="empty">No weight logged in the last 3 months yet.</div>'
         : lineChartSVG(wd, "#e8432b")) + "</div>";
+
+    if (wd.length > 0) {
+      html += '<div class="hint" style="margin:-4px 0 8px">Tap a number below to fix it, or use the &times; to remove that day entirely.</div>';
+      html += '<div class="card weight-log">';
+      wd.slice().reverse().forEach(function (w, i) {
+        var isToday = w.date === todayStr();
+        html += '<div class="wlog-row' + (i === 0 ? "" : "") + '">' +
+          '<div class="wlog-date">' + esc(w.label) + (isToday ? ' <span class="wlog-today">today</span>' : "") + "</div>" +
+          '<div class="wlog-controls">' +
+          '<input type="number" step="any" inputmode="decimal" class="wlog-input" data-wdate="' + w.date + '" value="' + w.value + '" />' +
+          '<span class="wlog-unit">' + esc(state.profile.weightUnit) + "</span>" +
+          '<button class="wlog-del" data-wdate="' + w.date + '" aria-label="Remove entry">&#10005;</button>' +
+          "</div></div>";
+      });
+      html += "</div>";
+    }
 
     html += '<div class="section-label">Daily Reminder</div>';
     var perm = notifPermission();
@@ -1414,6 +1475,12 @@ textarea.msg-box {
     if (closeDetail) {
       closeDetail.addEventListener("click", function () { state.selectedDate = null; render(); });
     }
+    app.querySelectorAll(".del-weight-link").forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        clearWeightForDate(el.getAttribute("data-date"));
+      });
+    });
     app.querySelectorAll("[data-planday]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.planDay = Number(btn.getAttribute("data-planday"));
@@ -1501,6 +1568,15 @@ textarea.msg-box {
     }
     var swb = document.getElementById("saveWeightBtn");
     if (swb) swb.addEventListener("click", saveTodayWeight);
+
+    app.querySelectorAll(".wlog-input").forEach(function (el) {
+      var commit = function () { editWeightForDate(el.getAttribute("data-wdate"), el.value); };
+      el.addEventListener("change", commit);
+      el.addEventListener("blur", commit);
+    });
+    app.querySelectorAll(".wlog-del").forEach(function (el) {
+      el.addEventListener("click", function () { clearWeightForDate(el.getAttribute("data-wdate")); });
+    });
 
     var installBtn = document.getElementById("installBtn");
     if (installBtn) {
