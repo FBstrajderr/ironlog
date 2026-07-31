@@ -1251,7 +1251,7 @@ textarea.msg-box {
         (s.completed ? "&#10003;" : "") + "</div>" +
         '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">target ' + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
         '<div class="inputs">' +
-        '<div><label>Wt</label><input type="number" step="any" inputmode="decimal" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
+        '<div><label>Wt</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
         '<div><label>Sets</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
         '<div><label>Reps</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
         "</div></div></div>";
@@ -1289,7 +1289,7 @@ textarea.msg-box {
       '<div class="field name"><label>Exercise</label><input id="newExName" placeholder="e.g. Bench Press" value="' + esc(state.newEx.name) + '" /></div>' +
       '<div class="field num"><label>Sets</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
       '<div class="field num"><label>Reps</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
-      '<div class="field num"><label>Weight</label><input id="newExWeight" type="number" step="any" inputmode="decimal" value="' + state.newEx.weight + '" /></div>' +
+      '<div class="field num"><label>Weight</label><input id="newExWeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + state.newEx.weight + '" /></div>' +
       '<div class="field num"><label>Unit</label><select id="newExUnit">' +
       '<option value="kg"' + (state.newEx.unit === "kg" ? " selected" : "") + ">kg</option>" +
       '<option value="lb"' + (state.newEx.unit === "lb" ? " selected" : "") + ">lb</option>" +
@@ -1306,7 +1306,7 @@ textarea.msg-box {
         '<div class="inputs">' +
         '<div><label>Sets</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
         '<div><label>Reps</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
-        '<div><label>Wt</label><input type="number" step="any" inputmode="decimal" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
+        '<div><label>Wt</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
         "</div>" +
         '<button class="trash-btn" data-action="remove" data-dow="' + dow + '" data-id="' + ex.id + '">&#128465;</button>' +
         "</div></div>";
@@ -1372,7 +1372,7 @@ textarea.msg-box {
 
     var html = '<div class="card"><div class="add-form">' +
       '<div class="field name"><label>Name</label><input id="profName" placeholder="Your name" value="' + esc(state.profile.name) + '" /></div>' +
-      '<div class="field num"><label>Height</label><input id="profHeight" type="number" step="any" inputmode="decimal" value="' + esc(state.profile.height) + '" /></div>' +
+      '<div class="field num"><label>Height</label><input id="profHeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.profile.height) + '" /></div>' +
       '<div class="field num"><label>Unit</label><select id="profHeightUnit">' +
       '<option value="cm"' + (state.profile.heightUnit === "cm" ? " selected" : "") + ">cm</option>" +
       '<option value="in"' + (state.profile.heightUnit === "in" ? " selected" : "") + ">in</option>" +
@@ -1390,7 +1390,7 @@ textarea.msg-box {
       '<div class="stat"><div class="num">' + (bmi != null ? bmi : "-") + '</div><div class="lbl">BMI</div></div></div>';
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="number" step="any" inputmode="decimal" value="' + esc(state.todayWeightInput) + '" /></div>' +
+      '<div class="field num"><label>Log Weight Today</label><input id="todayWeightInput" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + esc(state.todayWeightInput) + '" /></div>' +
       '<button class="add-btn" id="saveWeightBtn">&#43; Save</button>' +
       "</div></div>";
 
@@ -1407,7 +1407,7 @@ textarea.msg-box {
         html += '<div class="wlog-row' + (i === 0 ? "" : "") + '">' +
           '<div class="wlog-date">' + esc(w.label) + (isToday ? ' <span class="wlog-today">today</span>' : "") + "</div>" +
           '<div class="wlog-controls">' +
-          '<input type="number" step="any" inputmode="decimal" class="wlog-input" data-wdate="' + w.date + '" value="' + w.value + '" />' +
+          '<input type="text" inputmode="decimal" class="dec-input wlog-input" pattern="[0-9]*[.,]?[0-9]*" data-wdate="' + w.date + '" value="' + w.value + '" />' +
           '<span class="wlog-unit">' + esc(state.profile.weightUnit) + "</span>" +
           '<button class="wlog-del" data-wdate="' + w.date + '" aria-label="Remove entry">&#10005;</button>' +
           "</div></div>";
@@ -1457,6 +1457,17 @@ textarea.msg-box {
 
   // ---------- listeners ----------
   function attachListeners() {
+    // Any field meant for a decimal number: convert a typed comma to a period
+    // as they type, so a keyboard that only has "," still produces a valid number.
+    app.querySelectorAll(".dec-input").forEach(function (el) {
+      el.addEventListener("input", function () {
+        if (el.value.indexOf(",") === -1) return;
+        var pos = el.selectionStart;
+        el.value = el.value.replace(/,/g, ".");
+        try { el.setSelectionRange(pos, pos); } catch (e) {}
+      });
+    });
+
     app.querySelectorAll("[data-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.tab = btn.getAttribute("data-tab");
