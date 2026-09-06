@@ -362,6 +362,16 @@ textarea.msg-box {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px; fill: var(--text-muted);
 }
+.week-badges-row { display: flex; gap: 5px; }
+.week-badge {
+  flex: 1; min-width: 0; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; background: var(--panel-2); color: var(--text-muted);
+}
+.week-badge.hit { background: var(--gold); color: #14161a; }
+.week-badge.miss { border: 1px solid var(--accent); color: var(--accent); background: transparent; }
+.week-badge.live { border: 1px dashed var(--border); color: var(--text-muted); background: transparent; }
+.checkbox.disabled { opacity: 0.4; cursor: default; }
 </style>
 </head>
 <body>
@@ -392,7 +402,7 @@ textarea.msg-box {
   // ---------- translations ----------
   var STR = {
     en: {
-      tabToday: "Today", tabPlan: "Plan", tabProgress: "Progress", tabProfile: "Profile",
+      tabToday: "Today", tabPlan: "Workouts", tabProgress: "Progress", tabProfile: "Profile",
       previewNote: "Preview mode with sample data. Once installed on your phone, it starts empty and saves everything you enter.",
       saveWarn: "Could not save changes. Your device storage may be full or restricted.",
       installTitle: "Install IronLog", installBody: "Add it to your home screen so it opens full screen and works offline.",
@@ -439,10 +449,17 @@ textarea.msg-box {
       close: "Close", isWaiting: " is waiting", noPlanYet: "No plan yet. Build your week in the Plan tab.",
       exPlaceholder: "e.g. Bench Press", dayLabelPlaceholder: "e.g. Push, Legs, Cardio", yourName: "Your name",
       noLogsFor90d: "No completed logs for this exercise in the last 3 months yet.",
-      addExToTrackProgress: "Add exercises to your week to track lift progress."
+      addExToTrackProgress: "Add exercises to your week to track lift progress.",
+      newWorkoutLabel: "New Workout", workoutNamePlaceholder: "e.g. Upper Body", addWorkoutBtn: "+ Add",
+      noTemplatesYet: "No workouts saved yet. Add one above, e.g. Upper, Lower, Whole Body.",
+      workoutNameLabel: "Workout Name", deleteWorkoutBtn: "Delete workout",
+      emptyWorkoutHint: "No exercises in this workout yet. Add one above.",
+      chooseWorkoutPrompt: "Which workout are you doing?",
+      weeklyGoalLabel: "Weekly Goal", timesPerWeekSuffix: "x / week", thisWeekLabel: "This Week",
+      changeWorkoutBtn: "Change workout"
     },
     sr: {
-      tabToday: "Danas", tabPlan: "Plan", tabProgress: "Napredak", tabProfile: "Profil",
+      tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
       previewNote: "Prikaz sa test podacima. Kad instaliras na telefon, pocinje prazno i cuva sve sto unesesh.",
       saveWarn: "Nije uspelo cuvanje. Memorija telefona je puna ili blokirana.",
       installTitle: "Instaliraj IronLog", installBody: "Dodaj na pocetni ekran da se otvara preko celog ekrana i radi bez interneta.",
@@ -489,7 +506,14 @@ textarea.msg-box {
       close: "Zatvori", isWaiting: " ceka", noPlanYet: "Jos nema plana. Napravi nedelju u tabu Plan.",
       exPlaceholder: "npr. Bench Press", dayLabelPlaceholder: "npr. Guranje, Noge, Kardio", yourName: "Tvoje ime",
       noLogsFor90d: "Jos nema zabelezenih treninga za ovu vezbu u poslednja 3 meseca.",
-      addExToTrackProgress: "Dodaj vezbe u nedelju da pratis napredak u tegovima."
+      addExToTrackProgress: "Dodaj vezbe u nedelju da pratis napredak u tegovima.",
+      newWorkoutLabel: "Novi Trening", workoutNamePlaceholder: "npr. Gornji Deo Tela", addWorkoutBtn: "+ Dodaj",
+      noTemplatesYet: "Jos nema sacuvanih treninga. Dodaj iznad, npr. Gornji, Donji, Celo Telo.",
+      workoutNameLabel: "Naziv Treninga", deleteWorkoutBtn: "Obrisi trening",
+      emptyWorkoutHint: "Jos nema vezbi u ovom treningu. Dodaj iznad.",
+      chooseWorkoutPrompt: "Koji trening radis?",
+      weeklyGoalLabel: "Nedeljni Cilj", timesPerWeekSuffix: "x / nedeljno", thisWeekLabel: "Ova Nedelja",
+      changeWorkoutBtn: "Promeni Trening"
     }
   };
   function t(key) {
@@ -627,10 +651,12 @@ textarea.msg-box {
   }
 
   function workoutPending() {
-    var plan = todayPlan();
+    var ds = todayStr();
+    var plan = exercisesForDate(ds);
     if (plan.length === 0) return false;
+    var di = getDateInputs(ds);
     var done = plan.filter(function (ex) {
-      return state.todayInputs[ex.id] && state.todayInputs[ex.id].completed;
+      return di[ex.id] && di[ex.id].completed;
     }).length;
     return done < plan.length;
   }
@@ -739,7 +765,7 @@ textarea.msg-box {
     render();
   }
 
-  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs"];
+  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs", "ironlog_templates", "ironlog_assignments"];
 
   function exportData() {
     var payload = { app: "IronLog", version: 1, exportedAt: new Date().toISOString(), data: {} };
@@ -748,6 +774,8 @@ textarea.msg-box {
     payload.data.ironlog_logs = state.logs;
     payload.data.ironlog_profile = state.profile;
     payload.data.ironlog_weight_logs = state.weightLogs;
+    payload.data.ironlog_templates = state.templates;
+    payload.data.ironlog_assignments = state.assignments;
     payload.data.ironlog_reminders = state.reminders;
     var text = JSON.stringify(payload, null, 2);
     var name = "ironlog-backup-" + todayStr() + ".json";
@@ -790,10 +818,16 @@ textarea.msg-box {
     state.dayLabels = d.ironlog_day_labels || state.dayLabels;
     state.logs = Array.isArray(d.ironlog_logs) ? d.ironlog_logs : [];
     state.profile = d.ironlog_profile || state.profile;
+    if (typeof state.profile.weeklyGoal !== "number") state.profile.weeklyGoal = 3;
     state.weightLogs = Array.isArray(d.ironlog_weight_logs) ? d.ironlog_weight_logs : [];
+    state.templates = Array.isArray(d.ironlog_templates) ? d.ironlog_templates : [];
+    state.assignments = (d.ironlog_assignments && typeof d.ironlog_assignments === "object") ? d.ironlog_assignments : {};
     if (d.ironlog_reminders) { state.reminders = normalizeReminders(d.ironlog_reminders); persistReminders(); }
-    persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs();
-    refreshTodayInputs();
+    persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs(); persistTemplates(); persistAssignments();
+    if (!state.templates.length) migrateLegacyIfNeeded(); // old-format backup: build workouts from its weekday plan
+    state.dateInputs = {};
+    refreshDateInputs(todayStr());
+    state.selectedTemplateId = state.templates.length ? state.templates[0].id : null;
     var all = allExercises();
     state.progressExKey = all.length ? all[0].key : null;
     flash("Backup restored.");
@@ -813,34 +847,52 @@ textarea.msg-box {
     function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
 
     var defs = {
-      1: [["Bench Press", 4, 8, 62.5], ["Overhead Press", 3, 10, 35], ["Triceps Pushdown", 3, 12, 27.5]],
-      3: [["Deadlift", 3, 5, 110], ["Barbell Row", 4, 8, 62.5], ["Lat Pulldown", 3, 10, 52.5]],
-      5: [["Back Squat", 4, 8, 85], ["Leg Press", 3, 12, 130], ["Calf Raise", 3, 15, 45]]
+      1: ["Push", [["Bench Press", 4, 8, 62.5], ["Overhead Press", 3, 10, 35], ["Triceps Pushdown", 3, 12, 27.5]]],
+      3: ["Pull", [["Deadlift", 3, 5, 110], ["Barbell Row", 4, 8, 62.5], ["Lat Pulldown", 3, 10, 52.5]]],
+      5: ["Legs", [["Back Squat", 4, 8, 85], ["Leg Press", 3, 12, 130], ["Calf Raise", 3, 15, 45]]]
     };
-    var week = emptyWeek();
-    Object.keys(defs).forEach(function (d) {
-      week[d] = defs[d].map(function (t) {
-        return { id: uid(), name: t[0], sets: t[1], reps: t[2], weight: t[3], unit: "kg" };
-      });
+    var templates = Object.keys(defs).map(function (dow) {
+      return {
+        id: "demo-" + dow, name: defs[dow][0],
+        exercises: defs[dow][1].map(function (t) {
+          return { id: uid(), name: t[0], sets: t[1], reps: t[2], weight: t[3], unit: "kg" };
+        })
+      };
     });
+    function tplFor(dow) { return templates.find(function (tp) { return tp.name === defs[dow][0]; }); }
+    function snapshotFor(dow) {
+      return tplFor(dow).exercises.map(function (te) {
+        return { id: uid(), srcExId: te.id, name: te.name, sets: te.sets, reps: te.reps, weight: te.weight, unit: te.unit };
+      });
+    }
 
     var logs = [];
+    var assignments = {};
     for (var back = 88; back >= 1; back--) {
       var ds = daysAgoStr(back);
       var dow = dowOf(ds);
       if (!defs[dow]) continue;
       var weeksAgo = Math.floor(back / 7);
+      var snap = snapshotFor(dow);
+      var tpl = tplFor(dow);
+      assignments[ds] = { templateId: tpl.id, templateName: tpl.name, exercises: snap };
       if (rnd() < 0.13) continue; // occasional missed session
-      defs[dow].forEach(function (t) {
+      snap.forEach(function (se, i) {
+        var target = tpl.exercises[i].weight;
         var drop = Math.floor(weeksAgo / 2) * 2.5;
-        var wgt = Math.max(t[3] - drop, t[3] * 0.55);
+        var wgt = Math.max(target - drop, target * 0.55);
         logs.push({
-          id: uid(), date: ds, exerciseId: "demo",
-          exerciseKey: t[0].toLowerCase(), exerciseName: t[0],
-          weight: Math.round(wgt * 2) / 2, sets: t[1], reps: t[2],
+          id: uid(), date: ds, exerciseId: se.id,
+          exerciseKey: se.name.toLowerCase(), exerciseName: se.name,
+          weight: Math.round(wgt * 2) / 2, sets: se.sets, reps: se.reps,
           unit: "kg", completed: true
         });
       });
+    }
+    var ds0 = todayStr(), dow0 = dowOf(ds0);
+    if (defs[dow0]) {
+      var tpl0 = tplFor(dow0);
+      assignments[ds0] = { templateId: tpl0.id, templateName: tpl0.name, exercises: snapshotFor(dow0) };
     }
 
     var weightLogs = [];
@@ -849,11 +901,11 @@ textarea.msg-box {
       weightLogs.push({ id: uid(), date: daysAgoStr(b), weight: Math.round(w * 10) / 10 });
     }
 
-    save("ironlog_week", week);
-    save("ironlog_day_labels", { 0: "", 1: "Push", 2: "", 3: "Pull", 4: "", 5: "Legs", 6: "" });
+    save("ironlog_templates", templates);
+    save("ironlog_assignments", assignments);
     save("ironlog_logs", logs);
     save("ironlog_weight_logs", weightLogs);
-    save("ironlog_profile", { name: "Alex", gender: "male", height: "182", heightUnit: "cm", weightUnit: "kg" });
+    save("ironlog_profile", { name: "Alex", gender: "male", height: "182", heightUnit: "cm", weightUnit: "kg", weeklyGoal: 3 });
   }
   if (!storageOK) seedDemo();
 
@@ -862,19 +914,23 @@ textarea.msg-box {
     week: null,
     dayLabels: load("ironlog_day_labels", { 0: "", 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" }),
     logs: load("ironlog_logs", []),
-    profile: load("ironlog_profile", { name: "", gender: "", height: "", heightUnit: "cm", weightUnit: "kg" }),
+    profile: load("ironlog_profile", { name: "", gender: "", height: "", heightUnit: "cm", weightUnit: "kg", weeklyGoal: 3 }),
     weightLogs: load("ironlog_weight_logs", []),
+    templates: load("ironlog_templates", []),
+    assignments: load("ironlog_assignments", {}),
     reminders: normalizeReminders(load("ironlog_reminders", null)),
     lang: load("ironlog_lang", "en"),
     tab: "today",
-    todayInputs: {},
+    dateInputs: {},
     newEx: { name: "", sets: 3, reps: 10, weight: 20, unit: "kg" },
+    newTplName: "",
     progressExKey: null,
+    selectedTemplateId: null,
     todayWeightInput: "",
-    planDay: todayDow(),
     selectedDate: null,
     saveError: false
   };
+  if (typeof state.profile.weeklyGoal !== "number") state.profile.weeklyGoal = 3;
 
   (function initWeek() {
     var stored = load("ironlog_week", null);
@@ -890,32 +946,75 @@ textarea.msg-box {
   })();
 
   function planFor(dow) { return state.week[dow] || []; }
-  function todayPlan() { return planFor(todayDow()); }
   function exKey(ex) { return ex.name.trim().toLowerCase(); }
   function logKey(l) { return l.exerciseKey || (l.exerciseName ? l.exerciseName.trim().toLowerCase() : ""); }
 
+  function templateById(id) { return state.templates.find(function (tp) { return tp.id === id; }); }
+
+  // A date's exercises come from whatever workout was assigned to it. Dates
+  // from before workouts existed (or restored from an old backup) fall back
+  // to the old weekday-based plan so their history keeps showing correctly.
+  function exercisesForDate(dateStr) {
+    var a = state.assignments[dateStr];
+    if (a && Array.isArray(a.exercises)) return a.exercises;
+    return planFor(dowOf(dateStr));
+  }
+
   function allExercises() {
     var seen = {}, out = [];
-    WEEK_ORDER.forEach(function (dow) {
-      planFor(dow).forEach(function (ex) {
+    state.templates.forEach(function (tp) {
+      tp.exercises.forEach(function (ex) {
         var k = exKey(ex);
         if (!seen[k]) { seen[k] = true; out.push({ key: k, name: ex.name, unit: ex.unit }); }
       });
     });
+    state.logs.forEach(function (l) {
+      var k = logKey(l);
+      if (k && !seen[k]) { seen[k] = true; out.push({ key: k, name: l.exerciseName, unit: l.unit }); }
+    });
     return out;
   }
 
-  function refreshTodayInputs() {
-    var t = todayStr(), next = {};
-    todayPlan().forEach(function (ex) {
-      var existing = state.logs.find(function (l) { return l.exerciseId === ex.id && l.date === t; });
+  // One-time conversion of the old fixed weekday schedule into named,
+  // reusable workouts. Runs only while no workouts exist yet, so it is safe
+  // to call again after restoring an old-format backup.
+  function migrateLegacyIfNeeded() {
+    if (state.templates && state.templates.length) return;
+    var legacyWeek = load("ironlog_week", null);
+    if (!legacyWeek || typeof legacyWeek !== "object") return;
+    var labels = load("ironlog_day_labels", {}) || {};
+    var made = [];
+    WEEK_ORDER.forEach(function (dow) {
+      var exs = legacyWeek[dow];
+      if (!Array.isArray(exs) || !exs.length) return;
+      var label = (labels[dow] || "").trim();
+      made.push({
+        id: uid(), name: label || dayNames()[dow],
+        exercises: exs.map(function (e) {
+          return { id: uid(), name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, unit: e.unit };
+        })
+      });
+    });
+    if (made.length) { state.templates = made; persistTemplates(); }
+  }
+
+  function getDateInputs(dateStr) {
+    if (!state.dateInputs[dateStr]) refreshDateInputs(dateStr);
+    return state.dateInputs[dateStr];
+  }
+  function refreshDateInputs(dateStr) {
+    var next = {};
+    exercisesForDate(dateStr).forEach(function (ex) {
+      var existing = state.logs.find(function (l) { return l.exerciseId === ex.id && l.date === dateStr; });
       next[ex.id] = existing
         ? { weight: existing.weight, reps: existing.reps, sets: existing.sets, completed: !!existing.completed }
         : { weight: ex.weight, reps: ex.reps, sets: ex.sets, completed: false };
     });
-    state.todayInputs = next;
+    state.dateInputs[dateStr] = next;
   }
-  refreshTodayInputs();
+
+  migrateLegacyIfNeeded();
+  refreshDateInputs(todayStr());
 
   (function initTodayWeight() {
     var e = state.weightLogs.find(function (w) { return w.date === todayStr(); });
@@ -932,6 +1031,8 @@ textarea.msg-box {
   function persistLogs() { if (!save("ironlog_logs", state.logs)) state.saveError = true; }
   function persistProfile() { if (!save("ironlog_profile", state.profile)) state.saveError = true; }
   function persistWeightLogs() { if (!save("ironlog_weight_logs", state.weightLogs)) state.saveError = true; }
+  function persistTemplates() { if (!save("ironlog_templates", state.templates)) state.saveError = true; }
+  function persistAssignments() { if (!save("ironlog_assignments", state.assignments)) state.saveError = true; }
   function persistReminders() {
     if (!save("ironlog_reminders", state.reminders)) state.saveError = true;
     pushConfigToSW();
@@ -939,63 +1040,107 @@ textarea.msg-box {
   function persistLang() { if (!save("ironlog_lang", state.lang)) state.saveError = true; }
 
   // ---------- actions ----------
-  function addExercise() {
-    if (!state.newEx.name.trim()) return;
+  function addTemplate() {
+    var name = (state.newTplName || "").trim();
+    if (!name) return;
+    var tpl = { id: uid(), name: name, exercises: [] };
+    state.templates.push(tpl);
+    persistTemplates();
+    state.selectedTemplateId = tpl.id;
+    state.newTplName = "";
+    render();
+  }
+  function deleteTemplate(id) {
+    state.templates = state.templates.filter(function (tp) { return tp.id !== id; });
+    persistTemplates();
+    if (state.selectedTemplateId === id) {
+      state.selectedTemplateId = state.templates.length ? state.templates[0].id : null;
+    }
+    var all = allExercises();
+    if (!all.some(function (e) { return e.key === state.progressExKey; })) {
+      state.progressExKey = all.length ? all[0].key : null;
+    }
+    render();
+  }
+  function renameTemplate(id, name) {
+    var tpl = templateById(id);
+    if (!tpl || !name.trim()) return;
+    tpl.name = name.trim();
+    persistTemplates();
+  }
+  function addExerciseToTemplate() {
+    var tpl = templateById(state.selectedTemplateId);
+    if (!tpl || !state.newEx.name.trim()) return;
     var ex = {
       id: uid(), name: state.newEx.name.trim(),
       sets: parseInt2(state.newEx.sets) || 1, reps: parseInt2(state.newEx.reps) || 1,
       weight: parseNum(state.newEx.weight) || 0, unit: state.newEx.unit
     };
-    state.week[state.planDay] = planFor(state.planDay).concat([ex]);
-    persistWeek();
+    tpl.exercises.push(ex);
+    persistTemplates();
     if (!state.progressExKey) state.progressExKey = exKey(ex);
     state.newEx = { name: "", sets: 3, reps: 10, weight: 20, unit: ex.unit };
-    refreshTodayInputs();
     render();
   }
-  function removeExercise(dow, id) {
-    state.week[dow] = planFor(dow).filter(function (e) { return e.id !== id; });
-    persistWeek();
+  function removeTemplateExercise(tplId, exId) {
+    var tpl = templateById(tplId);
+    if (!tpl) return;
+    tpl.exercises = tpl.exercises.filter(function (e) { return e.id !== exId; });
+    persistTemplates();
     var all = allExercises();
     if (!all.some(function (e) { return e.key === state.progressExKey; })) {
       state.progressExKey = all.length ? all[0].key : null;
     }
-    refreshTodayInputs();
     render();
   }
-  function updatePlanField(dow, id, field, value) {
-    var ex = planFor(dow).find(function (e) { return e.id === id; });
+  function updateTemplateExField(tplId, exId, field, value) {
+    var tpl = templateById(tplId);
+    if (!tpl) return;
+    var ex = tpl.exercises.find(function (e) { return e.id === exId; });
     if (!ex) return;
     ex[field] = (field === "name" || field === "unit") ? value
       : (field === "weight" ? parseNum(value) : parseInt2(value));
-    persistWeek();
+    persistTemplates();
   }
-  function copyDay(fromDow) {
-    var source = planFor(fromDow);
-    if (!source.length) return;
-    state.week[state.planDay] = source.map(function (ex) {
-      return Object.assign({}, ex, { id: uid() });
+  function assignTemplateToDate(dateStr, templateId) {
+    var tpl = templateById(templateId);
+    if (!tpl) return;
+    var exs = tpl.exercises.map(function (e) {
+      return { id: uid(), srcExId: e.id, name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, unit: e.unit };
     });
-    persistWeek();
-    refreshTodayInputs();
-    render();
+    state.assignments[dateStr] = { templateId: tpl.id, templateName: tpl.name, exercises: exs };
+    persistAssignments();
+    refreshDateInputs(dateStr);
   }
-  function clearDay(dow) {
-    state.week[dow] = [];
-    persistWeek();
-    refreshTodayInputs();
-    render();
+  function clearAssignment(dateStr) {
+    delete state.assignments[dateStr];
+    persistAssignments();
+    refreshDateInputs(dateStr);
   }
-  function saveTodayLog(ex, overrides) {
+  // Whenever a weight is logged against a workout that came from a saved
+  // template, remember it on the template too, so the next time that
+  // workout is picked it starts from the weight you actually used last.
+  function syncTemplateWeight(dateStr, exId, weight) {
+    var a = state.assignments[dateStr];
+    if (!a || !a.templateId) return;
+    var aex = a.exercises.find(function (e) { return e.id === exId; });
+    if (!aex || !aex.srcExId) return;
+    var tpl = templateById(a.templateId);
+    if (!tpl) return;
+    var tex = tpl.exercises.find(function (e) { return e.id === aex.srcExId; });
+    if (!tex || tex.weight === weight) return;
+    tex.weight = weight;
+    persistTemplates();
+  }
+  function saveLogForDate(dateStr, ex, overrides) {
     overrides = overrides || {};
-    var t = todayStr();
-    var cur = Object.assign({}, state.todayInputs[ex.id], overrides);
+    var cur = Object.assign({}, getDateInputs(dateStr)[ex.id], overrides);
     var entry = {
-      id: uid(), date: t, exerciseId: ex.id, exerciseKey: exKey(ex), exerciseName: ex.name,
+      id: uid(), date: dateStr, exerciseId: ex.id, exerciseKey: exKey(ex), exerciseName: ex.name,
       weight: parseNum(cur.weight) || 0, reps: parseInt2(cur.reps) || 0, sets: parseInt2(cur.sets) || 0,
       unit: ex.unit, completed: !!cur.completed
     };
-    var idx = state.logs.findIndex(function (l) { return l.exerciseId === ex.id && l.date === t; });
+    var idx = state.logs.findIndex(function (l) { return l.exerciseId === ex.id && l.date === dateStr; });
     if (idx >= 0) {
       var oldId = state.logs[idx].id;
       state.logs[idx] = Object.assign({}, entry, { id: oldId });
@@ -1003,12 +1148,15 @@ textarea.msg-box {
       state.logs.push(entry);
     }
     persistLogs();
-    state.todayInputs[ex.id] = {
+    state.dateInputs[dateStr] = state.dateInputs[dateStr] || {};
+    state.dateInputs[dateStr][ex.id] = {
       weight: entry.weight, sets: entry.sets, reps: entry.reps, completed: entry.completed
     };
+    syncTemplateWeight(dateStr, ex.id, entry.weight);
   }
-  function toggleComplete(ex) {
-    saveTodayLog(ex, { completed: !state.todayInputs[ex.id].completed });
+  function toggleCompleteForDate(dateStr, ex) {
+    var di = getDateInputs(dateStr);
+    saveLogForDate(dateStr, ex, { completed: !(di[ex.id] && di[ex.id].completed) });
     render();
   }
   function saveTodayWeight() {
@@ -1044,8 +1192,7 @@ textarea.msg-box {
 
   function dayStatus(dateStr) {
     var t = todayStr();
-    var dow = dowOf(dateStr);
-    var planned = planFor(dow).length;
+    var planned = exercisesForDate(dateStr).length;
     var done = state.logs.filter(function (l) { return l.date === dateStr && l.completed; }).length;
     if (dateStr > t) return planned > 0 ? "upcoming" : "rest";
     if (done > 0) return (planned > 0 && done < planned) ? "partial" : "full";
@@ -1072,19 +1219,37 @@ textarea.msg-box {
     return Object.keys(set).length;
   }
 
-  function plannedDays90() {
-    var count = 0;
-    for (var i = 0; i < 90; i++) {
-      var ds = daysAgoStr(i);
-      if (planFor(dowOf(ds)).length > 0) count++;
+  function weeklyGoal() { return parseInt2(state.profile.weeklyGoal) || 0; }
+
+  function weekTrainedCount(weekMonDate) {
+    var count = 0, t = todayStr();
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(weekMonDate);
+      d.setDate(weekMonDate.getDate() + i);
+      var ds = toKey(d);
+      if (ds > t) continue;
+      if (state.logs.some(function (l) { return l.date === ds && l.completed; })) count++;
     }
     return count;
   }
+  function thisWeekTrainedCount() { return weekTrainedCount(mondayOfThisWeek()); }
+
+  // hit = met the weekly goal (week fully elapsed), miss = didn't, live = week still in progress
+  function weekBadgeInfo(weekMonDate) {
+    var goal = weeklyGoal();
+    var count = weekTrainedCount(weekMonDate);
+    var lastDay = new Date(weekMonDate);
+    lastDay.setDate(weekMonDate.getDate() + 6);
+    var complete = toKey(lastDay) < todayStr();
+    var status = !complete ? "live" : (count >= goal ? "hit" : "miss");
+    return { count: count, goal: goal, status: status };
+  }
 
   function adherence90() {
-    var planned = plannedDays90();
-    if (!planned) return null;
-    return Math.round((trainedDays90() / planned) * 100);
+    var goal = weeklyGoal();
+    if (!goal) return null;
+    var expected = goal * (90 / 7);
+    return Math.min(999, Math.round((trainedDays90() / expected) * 100));
   }
 
   function currentStreak() {
@@ -1134,9 +1299,9 @@ textarea.msg-box {
     if (!hM) return null;
     return (wKg / (hM * hM)).toFixed(1);
   }
-  function dayTitle(dow) {
-    var label = (state.dayLabels[dow] || "").trim();
-    return label ? dayNames()[dow] + " \u00b7 " + label : dayNames()[dow];
+  function labelForDate(dateStr, dow) {
+    var a = state.assignments[dateStr];
+    return a ? dayNames()[dow] + " \u00b7 " + a.templateName : dayNames()[dow];
   }
 
   // ---------- chart ----------
@@ -1193,7 +1358,7 @@ textarea.msg-box {
       var dow = dowOf(ds);
       var st = dayStatus(ds);
       html += '<div class="week-cell' + (ds === todayD ? " is-today" : "") +
-        (ds === state.selectedDate ? " sel" : "") + '" data-date="' + ds + '" title="' + esc(dayTitle(dow)) + '">' +
+        (ds === state.selectedDate ? " sel" : "") + '" data-date="' + ds + '" title="' + esc(labelForDate(ds, dow)) + '">' +
         '<div class="wd">' + dayShort()[dow] + "</div>" +
         '<div class="mark ' + st + '">' + markGlyph(st) + "</div></div>";
     });
@@ -1206,17 +1371,57 @@ textarea.msg-box {
     return html;
   }
 
+  // Renders the exercise list for one date: an interactive checklist when a
+  // workout is assigned (or logged, for old dates), a workout picker when
+  // nothing is assigned yet (any date up to today), or a plain message for
+  // future dates. Used both inline for Today and inside the day-detail popup.
+  function renderSessionEditor(dateStr) {
+    var todayD = todayStr();
+    var isFuture = dateStr > todayD;
+    var exs = exercisesForDate(dateStr);
+    var html = "";
+
+    if (exs.length === 0) {
+      if (isFuture) return '<div class="empty">' + t("nothingScheduled") + "</div>";
+      if (!state.templates.length) return '<div class="empty">' + t("noTemplatesYet") + "</div>";
+      html += '<div class="detail-sub" style="margin-bottom:8px">' + t("chooseWorkoutPrompt") + "</div>";
+      html += '<div class="day-pills">';
+      state.templates.forEach(function (tp) {
+        html += '<button class="day-pill" data-assign-date="' + dateStr + '" data-assign-tpl="' + tp.id + '">' +
+          esc(tp.name) + '<span class="pill-count">' + tp.exercises.length + "</span></button>";
+      });
+      html += "</div>";
+      return html;
+    }
+
+    var di = getDateInputs(dateStr);
+    var editable = !isFuture;
+    exs.forEach(function (ex) {
+      var s = di[ex.id] || { weight: ex.weight, sets: ex.sets, reps: ex.reps, completed: false };
+      html += '<div class="card"><div class="ex-row">' +
+        '<div class="checkbox' + (s.completed ? " checked" : "") + (editable ? "" : " disabled") + '"' +
+        (editable ? ' data-action="toggleDate" data-sdate="' + dateStr + '" data-id="' + ex.id + '"' : "") + ">" +
+        (s.completed ? "&#10003;" : "") + "</div>" +
+        '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
+        '<div class="inputs">' +
+        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.weight + '"' + (editable ? "" : " disabled") + " /></div>" +
+        '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '"' + (editable ? "" : " disabled") + " /></div>" +
+        '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.reps + '"' + (editable ? "" : " disabled") + " /></div>" +
+        "</div></div></div>";
+    });
+
+    if (editable && state.assignments[dateStr]) {
+      html += '<div style="text-align:center;margin:6px 0 2px"><button class="ghost-btn" data-action="changeWorkout" data-sdate="' + dateStr + '">' + t("changeWorkoutBtn") + "</button></div>";
+    }
+    return html;
+  }
+
   function dayDetailHTML(ds) {
     if (!ds) return "";
-    var dow = dowOf(ds);
     var todayD = todayStr();
     var st = dayStatus(ds);
-    var dayLogs = state.logs.filter(function (l) { return l.date === ds; });
-    var doneLogs = dayLogs.filter(function (l) { return l.completed; });
-    var scheduled = planFor(dow);
-
+    var label = state.assignments[ds] ? state.assignments[ds].templateName : "";
     var when = fmtLongDate(new Date(ds + "T00:00:00"));
-    var label = (state.dayLabels[dow] || "").trim();
 
     var statusText = {
       full: t("trainedTxt"), partial: t("partlyDone"), missed: t("missedTxt"),
@@ -1229,55 +1434,24 @@ textarea.msg-box {
       '<div class="detail-sub">' + statusText + "</div></div>" +
       '<button class="close-x" id="closeDetail" aria-label="' + t("close") + '">&#10005;</button></div>';
 
-    if (doneLogs.length === 0 && dayLogs.length === 0) {
-      if (scheduled.length === 0) {
-        html += '<div class="log-meta" style="padding:12px 0">' + t("nothingScheduled") + "</div>";
-      } else {
-        html += '<div class="log-meta" style="padding:12px 0 4px">' +
-          (ds >= todayD ? t("scheduledForDay") : t("wasScheduled")) + "</div>";
-        scheduled.forEach(function (ex) {
-          html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
-            '<div class="log-name off">' + esc(ex.name) + "</div>" +
-            '<div class="log-meta">' + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
-            "</div></div>";
-        });
-      }
-      html += "</div>";
-      return html;
+    html += renderSessionEditor(ds);
+
+    var dayLogs = state.logs.filter(function (l) { return l.date === ds; });
+    var doneLogs = dayLogs.filter(function (l) { return l.completed; });
+    if (doneLogs.length) {
+      var volume = 0, vUnit = "";
+      doneLogs.forEach(function (l) {
+        volume += (parseNum(l.weight) || 0) * (parseNum(l.sets) || 0) * (parseNum(l.reps) || 0);
+        if (!vUnit) vUnit = l.unit || "";
+      });
+      var bw = state.weightLogs.find(function (w) { return w.date === ds; });
+      html += '<div class="detail-foot">' +
+        "<span>" + t("exercisesDone") + " <b>" + doneLogs.length + "</b></span>" +
+        (volume > 0 ? "<span>" + t("volume") + " <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
+        (bw ? "<span>" + t("bodyWeight") + " <b>" + bw.weight + state.profile.weightUnit +
+          '</b> &nbsp;<a href="#" class="del-weight-link" data-wdate="' + ds + '">' + t("remove") + "</a></span>" : "") +
+        "</div>";
     }
-
-    var loggedKeys = {};
-    dayLogs.forEach(function (l) { loggedKeys[logKey(l)] = true; });
-
-    dayLogs.forEach(function (l) {
-      html += '<div class="log-line">' +
-        '<div class="log-tick' + (l.completed ? "" : " off") + '">' + (l.completed ? "&#10003;" : "&middot;") + "</div>" +
-        '<div class="log-body"><div class="log-name' + (l.completed ? "" : " off") + '">' + esc(l.exerciseName) + "</div>" +
-        '<div class="log-meta">' + l.weight + (l.unit || "") + " \u00b7 " + l.sets + " x " + l.reps +
-        (l.completed ? "" : t("notCheckedOff")) + "</div></div></div>";
-    });
-
-    scheduled.forEach(function (ex) {
-      if (loggedKeys[exKey(ex)]) return;
-      html += '<div class="log-line"><div class="log-tick off">&middot;</div><div class="log-body">' +
-        '<div class="log-name off">' + esc(ex.name) + "</div>" +
-        '<div class="log-meta">' + t("skippedPlanned") + ex.sets + " x " + ex.reps + " @ " + ex.weight + ex.unit + "</div>" +
-        "</div></div>";
-    });
-
-    var volume = 0, vUnit = "";
-    doneLogs.forEach(function (l) {
-      volume += (parseNum(l.weight) || 0) * (parseNum(l.sets) || 0) * (parseNum(l.reps) || 0);
-      if (!vUnit) vUnit = l.unit || "";
-    });
-    var bw = state.weightLogs.find(function (w) { return w.date === ds; });
-
-    html += '<div class="detail-foot">' +
-      "<span>" + t("exercisesDone") + " <b>" + doneLogs.length + "</b></span>" +
-      (volume > 0 ? "<span>" + t("volume") + " <b>" + Math.round(volume).toLocaleString("en-US") + " " + vUnit + "</b></span>" : "") +
-      (bw ? "<span>" + t("bodyWeight") + " <b>" + bw.weight + state.profile.weightUnit +
-        '</b> &nbsp;<a href="#" class="del-weight-link" data-date="' + ds + '">' + t("remove") + "</a></span>" : "") +
-      "</div>";
 
     html += "</div>";
     return html;
@@ -1352,74 +1526,66 @@ textarea.msg-box {
   }
 
   function renderToday() {
-    var dow = todayDow(), plan = todayPlan();
+    var ds = todayStr(), dow = todayDow();
+    var a = state.assignments[ds];
+    var bannerLabel = a ? a.templateName : dayNames()[dow];
     var html = "";
     if (workoutPending()) {
       html += '<div class="nag-bar"><div class="msg">' + esc(currentMessage()) + "</div>" +
-        '<div class="sub2">' + esc(dayTitle(dow)) + t("isWaiting") + "</div></div>";
+        '<div class="sub2">' + esc(bannerLabel) + t("isWaiting") + "</div></div>";
     }
     html += weekStripHTML();
     if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
-    html += '<div class="day-banner">' + esc(dayTitle(dow)) + "</div>";
+    html += '<div class="day-banner">' + esc(bannerLabel) + "</div>";
 
-    if (plan.length === 0) {
-      var anyPlanned = WEEK_ORDER.some(function (d) { return planFor(d).length > 0; });
-      html += '<div class="empty">' +
-        (anyPlanned ? t("restDayNothing") + dayNames()[dow] + "."
-                    : t("noPlanYet")) +
-        '</div><div style="text-align:center"><button class="add-btn" style="display:inline-flex" data-tab="plan">' + t("editDay") + dayShort()[dow] + "</button></div>";
-      return html;
+    var exs = exercisesForDate(ds);
+    if (exs.length) {
+      var di = getDateInputs(ds);
+      var doneCount = exs.filter(function (ex) { return di[ex.id] && di[ex.id].completed; }).length;
+      var goal = weeklyGoal(), weekCount = thisWeekTrainedCount();
+      html += '<div class="stat-row">' +
+        '<div class="stat"><div class="num">' + doneCount + "/" + exs.length + '</div><div class="lbl">' + t("doneToday") + "</div></div>" +
+        '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">' + t("dayStreak") + "</div></div>" +
+        (goal ? '<div class="stat"><div class="num" style="color:' + (weekCount >= goal ? "var(--gold)" : "var(--text)") + '">' +
+          weekCount + "/" + goal + '</div><div class="lbl">' + t("thisWeekLabel") + "</div></div>" : "") +
+        "</div>";
     }
 
-    var doneCount = plan.filter(function (ex) {
-      return state.todayInputs[ex.id] && state.todayInputs[ex.id].completed;
-    }).length;
+    html += renderSessionEditor(ds);
 
-    html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + doneCount + "/" + plan.length + '</div><div class="lbl">' + t("doneToday") + '</div></div>' +
-      '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">' + t("dayStreak") + '</div></div>' +
-      "</div>";
-
-    plan.forEach(function (ex) {
-      var s = state.todayInputs[ex.id] || { weight: ex.weight, sets: ex.sets, reps: ex.reps, completed: false };
-      html += '<div class="card"><div class="ex-row">' +
-        '<div class="checkbox ' + (s.completed ? "checked" : "") + '" data-action="toggle" data-id="' + ex.id + '">' +
-        (s.completed ? "&#10003;" : "") + "</div>" +
-        '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
-        '<div class="inputs">' +
-        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
-        '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
-        '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
-        "</div></div></div>";
-    });
-
-    if (doneCount === plan.length) {
-      html += '<div class="empty" style="color:var(--gold)">' + t("workoutComplete") + "</div>";
+    if (exs.length) {
+      var diAfter = getDateInputs(ds);
+      var allDone = exs.every(function (ex) { return diAfter[ex.id] && diAfter[ex.id].completed; });
+      if (allDone) html += '<div class="empty" style="color:var(--gold)">' + t("workoutComplete") + "</div>";
     }
     return html;
   }
 
   function renderPlan() {
-    var dow = state.planDay, plan = planFor(dow);
     var html = '<div class="day-pills">';
-    WEEK_ORDER.forEach(function (d) {
-      var count = planFor(d).length;
-      html += '<button class="day-pill ' + (d === dow ? "active" : "") + (count === 0 ? " rest" : "") +
-        '" data-planday="' + d + '">' + dayShort()[d] +
-        '<span class="pill-count">' + (count === 0 ? t("rest") : count) + "</span></button>";
+    state.templates.forEach(function (tp) {
+      html += '<button class="day-pill ' + (tp.id === state.selectedTemplateId ? "active" : "") +
+        '" data-select-tpl="' + tp.id + '">' + esc(tp.name) +
+        '<span class="pill-count">' + tp.exercises.length + "</span></button>";
     });
     html += "</div>";
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field name"><label>' + dayNames()[dow] + t("dayLabelSuffix") + '</label><input id="dayLabel" placeholder="' + t("dayLabelPlaceholder") + '" value="' + esc(state.dayLabels[dow] || "") + '" /></div>' +
-      '<div class="field num" style="min-width:96px"><label>' + t("copyFrom") + '</label><select id="copyFrom" style="width:96px"><option value="">' + t("choose") + '</option>';
-    WEEK_ORDER.forEach(function (d) {
-      if (d === dow || planFor(d).length === 0) return;
-      html += '<option value="' + d + '">' + dayShort()[d] + " (" + planFor(d).length + ")</option>";
-    });
-    html += "</select></div>";
-    if (plan.length) html += '<button class="trash-btn" id="clearDayBtn">' + t("clearDay") + "</button>";
-    html += "</div></div>";
+      '<div class="field name"><label>' + t("newWorkoutLabel") + '</label><input id="newTplName" placeholder="' + t("workoutNamePlaceholder") + '" value="' + esc(state.newTplName) + '" /></div>' +
+      '<button class="add-btn" id="addTplBtn">' + t("addWorkoutBtn") + "</button></div></div>";
+
+    if (!state.templates.length) {
+      html += '<div class="empty">' + t("noTemplatesYet") + "</div>";
+      return html;
+    }
+
+    var tpl = templateById(state.selectedTemplateId) || state.templates[0];
+    state.selectedTemplateId = tpl.id;
+
+    html += '<div class="card"><div class="add-form">' +
+      '<div class="field name"><label>' + t("workoutNameLabel") + '</label><input id="tplNameInput" value="' + esc(tpl.name) + '" /></div>' +
+      '<button class="trash-btn" id="delTplBtn" aria-label="' + t("deleteWorkoutBtn") + '">&#128465;</button>' +
+      "</div></div>";
 
     html += '<div class="card"><div class="add-form">' +
       '<div class="field name"><label>' + t("exercise") + '</label><input id="newExName" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" /></div>' +
@@ -1430,21 +1596,21 @@ textarea.msg-box {
       '<option value="kg"' + (state.newEx.unit === "kg" ? " selected" : "") + ">kg</option>" +
       '<option value="lb"' + (state.newEx.unit === "lb" ? " selected" : "") + ">lb</option>" +
       "</select></div>" +
-      '<button class="add-btn" id="addExBtn">' + t("addTo") + dayShort()[dow] + "</button></div></div>";
+      '<button class="add-btn" id="addExBtn">' + t("addTo") + esc(tpl.name) + "</button></div></div>";
 
-    if (plan.length === 0) {
-      html += '<div class="empty">' + dayNames()[dow] + t("restDayEmpty") + "</div>";
+    if (!tpl.exercises.length) {
+      html += '<div class="empty">' + t("emptyWorkoutHint") + "</div>";
     }
 
-    plan.forEach(function (ex) {
+    tpl.exercises.forEach(function (ex) {
       html += '<div class="card"><div class="plan-item">' +
-        '<input class="name-input" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
+        '<input class="name-input" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
         '<div class="inputs">' +
-        '<div><label>' + t("sets") + '</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
-        '<div><label>' + t("reps") + '</label><input type="number" inputmode="numeric" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
-        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-plan-dow="' + dow + '" data-plan-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
+        '<div><label>' + t("sets") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
+        '<div><label>' + t("reps") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
+        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
         "</div>" +
-        '<button class="trash-btn" data-action="remove" data-dow="' + dow + '" data-id="' + ex.id + '">&#128465;</button>' +
+        '<button class="trash-btn" data-action="removeTplEx" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '">&#128465;</button>' +
         "</div></div>";
     });
     return html;
@@ -1460,6 +1626,21 @@ textarea.msg-box {
       '<div class="stat"><div class="num">' + (adh != null ? adh + "%" : "-") + '</div><div class="lbl">' + t("planAdherence") + '</div></div>' +
       '<div class="stat"><div class="num">' + currentStreak() + '</div><div class="lbl">' + t("streak") + '</div></div>' +
       "</div>";
+
+    if (weeklyGoal()) {
+      html += '<div class="section-label">' + t("weeklyGoalLabel") + " · " + weeklyGoal() + " " + t("timesPerWeekSuffix") + "</div>";
+      html += '<div class="card"><div class="week-badges-row">';
+      var wgWeeks = 12, wgMon = mondayOfThisWeek(), wgStart = new Date(wgMon);
+      wgStart.setDate(wgMon.getDate() - 7 * (wgWeeks - 1));
+      for (var wgI = 0; wgI < wgWeeks; wgI++) {
+        var wgD = new Date(wgStart);
+        wgD.setDate(wgStart.getDate() + wgI * 7);
+        var info = weekBadgeInfo(wgD);
+        var glyph = info.status === "live" ? info.count : (info.status === "hit" ? "&#10003;" : "&#10005;");
+        html += '<div class="week-badge ' + info.status + '" title="' + info.count + "/" + info.goal + '">' + glyph + "</div>";
+      }
+      html += "</div></div>";
+    }
 
     html += '<div class="section-label">' + t("last12Weeks") + "</div>";
     html += '<div class="card">' + consistencyGridHTML() +
@@ -1527,6 +1708,7 @@ textarea.msg-box {
       '<option value="en"' + (state.lang === "en" ? " selected" : "") + ">English</option>" +
       '<option value="sr"' + (state.lang === "sr" ? " selected" : "") + ">Srpski</option>" +
       "</select></div>" +
+      '<div class="field num"><label>' + t("weeklyGoalLabel") + '</label><input id="profWeeklyGoal" type="number" inputmode="numeric" min="0" max="14" value="' + parseInt2(state.profile.weeklyGoal) + '" /></div>' +
       "</div></div>";
 
     var changeColor = change > 0 ? "#e8432b" : (change < 0 ? "#c9a227" : "var(--text-muted)");
@@ -1634,47 +1816,59 @@ textarea.msg-box {
     app.querySelectorAll(".del-weight-link").forEach(function (el) {
       el.addEventListener("click", function (ev) {
         ev.preventDefault();
-        clearWeightForDate(el.getAttribute("data-date"));
+        clearWeightForDate(el.getAttribute("data-wdate"));
       });
     });
-    app.querySelectorAll("[data-planday]").forEach(function (btn) {
+    app.querySelectorAll("[data-assign-date]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        state.planDay = Number(btn.getAttribute("data-planday"));
+        assignTemplateToDate(btn.getAttribute("data-assign-date"), btn.getAttribute("data-assign-tpl"));
         render();
       });
     });
-    app.querySelectorAll('[data-action="toggle"]').forEach(function (el) {
+    app.querySelectorAll('[data-action="changeWorkout"]').forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        clearAssignment(btn.getAttribute("data-sdate"));
+        render();
+      });
+    });
+    app.querySelectorAll('[data-action="toggleDate"]').forEach(function (el) {
       el.addEventListener("click", function () {
-        var ex = todayPlan().find(function (e) { return e.id === el.getAttribute("data-id"); });
-        if (ex) toggleComplete(ex);
+        var ds = el.getAttribute("data-sdate");
+        var ex = exercisesForDate(ds).find(function (e) { return e.id === el.getAttribute("data-id"); });
+        if (ex) toggleCompleteForDate(ds, ex);
       });
     });
     app.querySelectorAll("input[data-field]").forEach(function (el) {
       el.addEventListener("input", function () {
-        var id = el.getAttribute("data-id"), f = el.getAttribute("data-field"), p = {};
+        var ds = el.getAttribute("data-sdate"), id = el.getAttribute("data-id"), f = el.getAttribute("data-field"), p = {};
         p[f] = el.value;
-        state.todayInputs[id] = Object.assign({}, state.todayInputs[id], p);
+        state.dateInputs[ds] = state.dateInputs[ds] || {};
+        state.dateInputs[ds][id] = Object.assign({}, state.dateInputs[ds][id], p);
       });
       el.addEventListener("blur", function () {
-        var ex = todayPlan().find(function (e) { return e.id === el.getAttribute("data-id"); });
-        if (ex) saveTodayLog(ex);
+        var ds = el.getAttribute("data-sdate");
+        var ex = exercisesForDate(ds).find(function (e) { return e.id === el.getAttribute("data-id"); });
+        if (ex) { saveLogForDate(ds, ex); render(); }
       });
     });
 
-    var dayLabelEl = document.getElementById("dayLabel");
-    if (dayLabelEl) {
-      var lh = function () { state.dayLabels[state.planDay] = dayLabelEl.value; persistDayLabels(); };
-      dayLabelEl.addEventListener("change", lh);
-      dayLabelEl.addEventListener("blur", lh);
+    // ---- workouts (templates) tab ----
+    app.querySelectorAll("[data-select-tpl]").forEach(function (btn) {
+      btn.addEventListener("click", function () { state.selectedTemplateId = btn.getAttribute("data-select-tpl"); render(); });
+    });
+    var newTplNameEl = document.getElementById("newTplName");
+    if (newTplNameEl) newTplNameEl.addEventListener("input", function () { state.newTplName = newTplNameEl.value; });
+    var addTplBtn = document.getElementById("addTplBtn");
+    if (addTplBtn) addTplBtn.addEventListener("click", addTemplate);
+
+    var tplNameInput = document.getElementById("tplNameInput");
+    if (tplNameInput) {
+      var rn = function () { renameTemplate(state.selectedTemplateId, tplNameInput.value); };
+      tplNameInput.addEventListener("change", rn);
+      tplNameInput.addEventListener("blur", rn);
     }
-    var copyFromEl = document.getElementById("copyFrom");
-    if (copyFromEl) {
-      copyFromEl.addEventListener("change", function () {
-        if (copyFromEl.value !== "") copyDay(Number(copyFromEl.value));
-      });
-    }
-    var clearBtn = document.getElementById("clearDayBtn");
-    if (clearBtn) clearBtn.addEventListener("click", function () { clearDay(state.planDay); });
+    var delTplBtn = document.getElementById("delTplBtn");
+    if (delTplBtn) delTplBtn.addEventListener("click", function () { deleteTemplate(state.selectedTemplateId); });
 
     var addBtn = document.getElementById("addExBtn");
     if (addBtn) {
@@ -1686,16 +1880,16 @@ textarea.msg-box {
           el.addEventListener("input", h);
           el.addEventListener("change", h);
         });
-      addBtn.addEventListener("click", addExercise);
+      addBtn.addEventListener("click", addExerciseToTemplate);
     }
-    app.querySelectorAll('[data-action="remove"]').forEach(function (el) {
+    app.querySelectorAll('[data-action="removeTplEx"]').forEach(function (el) {
       el.addEventListener("click", function () {
-        removeExercise(Number(el.getAttribute("data-dow")), el.getAttribute("data-id"));
+        removeTemplateExercise(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"));
       });
     });
-    app.querySelectorAll("[data-plan-id]").forEach(function (el) {
+    app.querySelectorAll("[data-tpl-id][data-ex-id]").forEach(function (el) {
       var h = function () {
-        updatePlanField(Number(el.getAttribute("data-plan-dow")), el.getAttribute("data-plan-id"),
+        updateTemplateExField(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"),
           el.getAttribute("data-plan-field"), el.value);
       };
       el.addEventListener("change", h);
@@ -1716,6 +1910,13 @@ textarea.msg-box {
     bind("profHeight", "height", false);
     bind("profHeightUnit", "heightUnit", true);
     bind("profWeightUnit", "weightUnit", true);
+
+    var profGoal = document.getElementById("profWeeklyGoal");
+    if (profGoal) {
+      var gh = function () { state.profile.weeklyGoal = parseInt2(profGoal.value) || 0; persistProfile(); render(); };
+      profGoal.addEventListener("change", gh);
+      profGoal.addEventListener("blur", gh);
+    }
 
     var profGender = document.getElementById("profGender");
     if (profGender) {
@@ -1817,6 +2018,8 @@ textarea.msg-box {
             ironlog_logs: state.logs,
             ironlog_profile: state.profile,
             ironlog_weight_logs: state.weightLogs,
+            ironlog_templates: state.templates,
+            ironlog_assignments: state.assignments,
             ironlog_reminders: state.reminders
           }
         }, null, 2));
@@ -1845,7 +2048,7 @@ textarea.msg-box {
   try {
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) {
-        refreshTodayInputs();
+        refreshDateInputs(todayStr());
         maybeNotifyNow();
         scheduleReminder();
         render();
