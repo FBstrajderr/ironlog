@@ -456,7 +456,8 @@ textarea.msg-box {
       emptyWorkoutHint: "No exercises in this workout yet. Add one above.",
       chooseWorkoutPrompt: "Which workout are you doing?",
       weeklyGoalLabel: "Weekly Goal", timesPerWeekSuffix: "x / week", thisWeekLabel: "This Week",
-      changeWorkoutBtn: "Change workout"
+      changeWorkoutBtn: "Change workout",
+      workoutForDayLabel: "Workout", restOrChoose: "— Rest day / choose a workout —"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -513,7 +514,8 @@ textarea.msg-box {
       emptyWorkoutHint: "Jos nema vezbi u ovom treningu. Dodaj iznad.",
       chooseWorkoutPrompt: "Koji trening radis?",
       weeklyGoalLabel: "Nedeljni Cilj", timesPerWeekSuffix: "x / nedeljno", thisWeekLabel: "Ova Nedelja",
-      changeWorkoutBtn: "Promeni Trening"
+      changeWorkoutBtn: "Promeni Trening",
+      workoutForDayLabel: "Trening", restOrChoose: "— Dan odmora / izaberi trening —"
     }
   };
   function t(key) {
@@ -1381,38 +1383,43 @@ textarea.msg-box {
     var exs = exercisesForDate(dateStr);
     var html = "";
 
-    if (exs.length === 0) {
-      if (isFuture) return '<div class="empty">' + t("nothingScheduled") + "</div>";
-      if (!state.templates.length) return '<div class="empty">' + t("noTemplatesYet") + "</div>";
-      html += '<div class="detail-sub" style="margin-bottom:8px">' + t("chooseWorkoutPrompt") + "</div>";
-      html += '<div class="day-pills">';
-      state.templates.forEach(function (tp) {
-        html += '<button class="day-pill" data-assign-date="' + dateStr + '" data-assign-tpl="' + tp.id + '">' +
-          esc(tp.name) + '<span class="pill-count">' + tp.exercises.length + "</span></button>";
-      });
-      html += "</div>";
-      return html;
+    if (isFuture) {
+      return exs.length ? "" : '<div class="empty">' + t("nothingScheduled") + "</div>";
     }
 
+    // Always-visible workout picker: switching it any time replaces today's
+    // (or that day's) exercises with a fresh copy of the chosen workout. If
+    // every saved workout has since been deleted, skip the picker but still
+    // show whatever was already logged/assigned for this date.
+    if (state.templates.length) {
+      var curTplId = state.assignments[dateStr] ? state.assignments[dateStr].templateId : "";
+      html += '<div class="section-label" style="margin-top:0">' + t("workoutForDayLabel") + "</div>";
+      html += '<select class="ex-picker" data-workout-select="' + dateStr + '">' +
+        '<option value="">' + t("restOrChoose") + "</option>";
+      state.templates.forEach(function (tp) {
+        html += '<option value="' + tp.id + '"' + (tp.id === curTplId ? " selected" : "") + ">" +
+          esc(tp.name) + " (" + tp.exercises.length + ")</option>";
+      });
+      html += "</select>";
+    } else if (exs.length === 0) {
+      return '<div class="empty">' + t("noTemplatesYet") + "</div>";
+    }
+
+    if (exs.length === 0) return html;
+
     var di = getDateInputs(dateStr);
-    var editable = !isFuture;
     exs.forEach(function (ex) {
       var s = di[ex.id] || { weight: ex.weight, sets: ex.sets, reps: ex.reps, completed: false };
       html += '<div class="card"><div class="ex-row">' +
-        '<div class="checkbox' + (s.completed ? " checked" : "") + (editable ? "" : " disabled") + '"' +
-        (editable ? ' data-action="toggleDate" data-sdate="' + dateStr + '" data-id="' + ex.id + '"' : "") + ">" +
+        '<div class="checkbox' + (s.completed ? " checked" : "") + '" data-action="toggleDate" data-sdate="' + dateStr + '" data-id="' + ex.id + '">' +
         (s.completed ? "&#10003;" : "") + "</div>" +
         '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
         '<div class="inputs">' +
-        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.weight + '"' + (editable ? "" : " disabled") + " /></div>" +
-        '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '"' + (editable ? "" : " disabled") + " /></div>" +
-        '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.reps + '"' + (editable ? "" : " disabled") + " /></div>" +
+        '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
+        '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
+        '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
         "</div></div></div>";
     });
-
-    if (editable && state.assignments[dateStr]) {
-      html += '<div style="text-align:center;margin:6px 0 2px"><button class="ghost-btn" data-action="changeWorkout" data-sdate="' + dateStr + '">' + t("changeWorkoutBtn") + "</button></div>";
-    }
     return html;
   }
 
@@ -1819,15 +1826,11 @@ textarea.msg-box {
         clearWeightForDate(el.getAttribute("data-wdate"));
       });
     });
-    app.querySelectorAll("[data-assign-date]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        assignTemplateToDate(btn.getAttribute("data-assign-date"), btn.getAttribute("data-assign-tpl"));
-        render();
-      });
-    });
-    app.querySelectorAll('[data-action="changeWorkout"]').forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        clearAssignment(btn.getAttribute("data-sdate"));
+    app.querySelectorAll("[data-workout-select]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var ds = el.getAttribute("data-workout-select");
+        if (el.value) assignTemplateToDate(ds, el.value);
+        else clearAssignment(ds);
         render();
       });
     });
