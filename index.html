@@ -457,7 +457,8 @@ textarea.msg-box {
       chooseWorkoutPrompt: "Which workout are you doing?",
       weeklyGoalLabel: "Weekly Goal", timesPerWeekSuffix: "x / week", thisWeekLabel: "This Week",
       changeWorkoutBtn: "Change workout",
-      workoutForDayLabel: "Workout", restOrChoose: "— Rest day / choose a workout —"
+      workoutForDayLabel: "Workout", restOrChoose: "— Rest day / choose a workout —",
+      newExerciseOption: "+ New exercise", newExerciseNameLabel: "New Exercise Name"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -515,7 +516,8 @@ textarea.msg-box {
       chooseWorkoutPrompt: "Koji trening radis?",
       weeklyGoalLabel: "Nedeljni Cilj", timesPerWeekSuffix: "x / nedeljno", thisWeekLabel: "Ova Nedelja",
       changeWorkoutBtn: "Promeni Trening",
-      workoutForDayLabel: "Trening", restOrChoose: "— Dan odmora / izaberi trening —"
+      workoutForDayLabel: "Trening", restOrChoose: "— Dan odmora / izaberi trening —",
+      newExerciseOption: "+ Nova vezba", newExerciseNameLabel: "Naziv Nove Vezbe"
     }
   };
   function t(key) {
@@ -767,7 +769,7 @@ textarea.msg-box {
     render();
   }
 
-  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs", "ironlog_templates", "ironlog_assignments"];
+  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs", "ironlog_templates", "ironlog_assignments", "ironlog_exercises"];
 
   function exportData() {
     var payload = { app: "IronLog", version: 1, exportedAt: new Date().toISOString(), data: {} };
@@ -778,6 +780,7 @@ textarea.msg-box {
     payload.data.ironlog_weight_logs = state.weightLogs;
     payload.data.ironlog_templates = state.templates;
     payload.data.ironlog_assignments = state.assignments;
+    payload.data.ironlog_exercises = state.library;
     payload.data.ironlog_reminders = state.reminders;
     var text = JSON.stringify(payload, null, 2);
     var name = "ironlog-backup-" + todayStr() + ".json";
@@ -824,9 +827,11 @@ textarea.msg-box {
     state.weightLogs = Array.isArray(d.ironlog_weight_logs) ? d.ironlog_weight_logs : [];
     state.templates = Array.isArray(d.ironlog_templates) ? d.ironlog_templates : [];
     state.assignments = (d.ironlog_assignments && typeof d.ironlog_assignments === "object") ? d.ironlog_assignments : {};
+    state.library = Array.isArray(d.ironlog_exercises) ? d.ironlog_exercises : [];
     if (d.ironlog_reminders) { state.reminders = normalizeReminders(d.ironlog_reminders); persistReminders(); }
-    persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs(); persistTemplates(); persistAssignments();
+    persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs(); persistTemplates(); persistAssignments(); persistLibrary();
     if (!state.templates.length) migrateLegacyIfNeeded(); // old-format backup: build workouts from its weekday plan
+    migrateLibraryIfNeeded();
     state.dateInputs = {};
     refreshDateInputs(todayStr());
     state.selectedTemplateId = state.templates.length ? state.templates[0].id : null;
@@ -920,11 +925,13 @@ textarea.msg-box {
     weightLogs: load("ironlog_weight_logs", []),
     templates: load("ironlog_templates", []),
     assignments: load("ironlog_assignments", {}),
+    library: load("ironlog_exercises", []),
     reminders: normalizeReminders(load("ironlog_reminders", null)),
     lang: load("ironlog_lang", "en"),
     tab: "today",
     dateInputs: {},
     newEx: { name: "", sets: 3, reps: 10, weight: 20, unit: "kg" },
+    newExLibId: "",
     newTplName: "",
     progressExKey: null,
     selectedTemplateId: null,
@@ -1000,6 +1007,36 @@ textarea.msg-box {
     if (made.length) { state.templates = made; persistTemplates(); }
   }
 
+  // Backfills the shared exercise library from whatever exercises already
+  // exist in saved workouts, so it isn't empty for people who built their
+  // workouts before this feature existed (or after restoring an old backup).
+  function migrateLibraryIfNeeded() {
+    if (state.library && state.library.length) return;
+    var seen = {}, out = [];
+    state.templates.forEach(function (tp) {
+      tp.exercises.forEach(function (ex) {
+        var k = exKey(ex);
+        if (!seen[k]) {
+          seen[k] = true;
+          out.push({ id: uid(), name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, unit: ex.unit });
+        }
+      });
+    });
+    if (out.length) { state.library = out; persistLibrary(); }
+  }
+
+  function libraryEntry(id) { return state.library.find(function (le) { return le.id === id; }); }
+
+  // Adds a name to the shared exercise library if it isn't already there
+  // (case-insensitively), so the library never ends up with duplicates.
+  function addToLibraryIfNew(ex) {
+    var key = exKey(ex);
+    var exists = state.library.some(function (le) { return le.name.trim().toLowerCase() === key; });
+    if (exists) return;
+    state.library.push({ id: uid(), name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, unit: ex.unit });
+    persistLibrary();
+  }
+
   function getDateInputs(dateStr) {
     if (!state.dateInputs[dateStr]) refreshDateInputs(dateStr);
     return state.dateInputs[dateStr];
@@ -1016,6 +1053,7 @@ textarea.msg-box {
   }
 
   migrateLegacyIfNeeded();
+  migrateLibraryIfNeeded();
   refreshDateInputs(todayStr());
 
   (function initTodayWeight() {
@@ -1035,6 +1073,7 @@ textarea.msg-box {
   function persistWeightLogs() { if (!save("ironlog_weight_logs", state.weightLogs)) state.saveError = true; }
   function persistTemplates() { if (!save("ironlog_templates", state.templates)) state.saveError = true; }
   function persistAssignments() { if (!save("ironlog_assignments", state.assignments)) state.saveError = true; }
+  function persistLibrary() { if (!save("ironlog_exercises", state.library)) state.saveError = true; }
   function persistReminders() {
     if (!save("ironlog_reminders", state.reminders)) state.saveError = true;
     pushConfigToSW();
@@ -1080,8 +1119,10 @@ textarea.msg-box {
     };
     tpl.exercises.push(ex);
     persistTemplates();
+    addToLibraryIfNew(ex);
     if (!state.progressExKey) state.progressExKey = exKey(ex);
     state.newEx = { name: "", sets: 3, reps: 10, weight: 20, unit: ex.unit };
+    state.newExLibId = "";
     render();
   }
   function removeTemplateExercise(tplId, exId) {
@@ -1595,8 +1636,16 @@ textarea.msg-box {
       "</div></div>";
 
     html += '<div class="card"><div class="add-form">' +
-      '<div class="field name"><label>' + t("exercise") + '</label><input id="newExName" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" /></div>' +
-      '<div class="field num"><label>' + t("sets") + '</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
+      '<div class="field name"><label>' + t("exercise") + '</label><select id="exLibraryPicker">' +
+      '<option value="">' + t("newExerciseOption") + "</option>";
+    state.library.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (le) {
+      html += '<option value="' + le.id + '"' + (state.newExLibId === le.id ? " selected" : "") + ">" + esc(le.name) + "</option>";
+    });
+    html += "</select></div>";
+    if (!state.newExLibId) {
+      html += '<div class="field name"><label>' + t("newExerciseNameLabel") + '</label><input id="newExName" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" /></div>';
+    }
+    html += '<div class="field num"><label>' + t("sets") + '</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
       '<div class="field num"><label>' + t("reps") + '</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
       '<div class="field num"><label>' + t("weight") + '</label><input id="newExWeight" type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" value="' + state.newEx.weight + '" /></div>' +
       '<div class="field num"><label>' + t("unit") + '</label><select id="newExUnit">' +
@@ -1857,7 +1906,12 @@ textarea.msg-box {
 
     // ---- workouts (templates) tab ----
     app.querySelectorAll("[data-select-tpl]").forEach(function (btn) {
-      btn.addEventListener("click", function () { state.selectedTemplateId = btn.getAttribute("data-select-tpl"); render(); });
+      btn.addEventListener("click", function () {
+        state.selectedTemplateId = btn.getAttribute("data-select-tpl");
+        state.newExLibId = "";
+        state.newEx = { name: "", sets: 3, reps: 10, weight: 20, unit: state.newEx.unit };
+        render();
+      });
     });
     var newTplNameEl = document.getElementById("newTplName");
     if (newTplNameEl) newTplNameEl.addEventListener("input", function () { state.newTplName = newTplNameEl.value; });
@@ -1873,6 +1927,19 @@ textarea.msg-box {
     var delTplBtn = document.getElementById("delTplBtn");
     if (delTplBtn) delTplBtn.addEventListener("click", function () { deleteTemplate(state.selectedTemplateId); });
 
+    var exLibraryPicker = document.getElementById("exLibraryPicker");
+    if (exLibraryPicker) {
+      exLibraryPicker.addEventListener("change", function () {
+        state.newExLibId = exLibraryPicker.value;
+        if (exLibraryPicker.value) {
+          var le = libraryEntry(exLibraryPicker.value);
+          if (le) state.newEx = { name: le.name, sets: le.sets, reps: le.reps, weight: le.weight, unit: le.unit };
+        } else {
+          state.newEx = { name: "", sets: 3, reps: 10, weight: 20, unit: state.newEx.unit };
+        }
+        render();
+      });
+    }
     var addBtn = document.getElementById("addExBtn");
     if (addBtn) {
       [["newExName", "name"], ["newExSets", "sets"], ["newExReps", "reps"], ["newExWeight", "weight"], ["newExUnit", "unit"]]
@@ -2023,6 +2090,7 @@ textarea.msg-box {
             ironlog_weight_logs: state.weightLogs,
             ironlog_templates: state.templates,
             ironlog_assignments: state.assignments,
+            ironlog_exercises: state.library,
             ironlog_reminders: state.reminders
           }
         }, null, 2));
