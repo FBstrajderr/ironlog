@@ -396,6 +396,22 @@ select.swap-picker {
   flex: 1; min-width: 100px; background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-weight: 700; padding: 9px; font-size: 14px;
 }
+.rest-timer-card { text-align: center; }
+.rest-timer-display {
+  font-family: "SFMono-Regular", Consolas, monospace; font-size: 42px; font-weight: 900;
+  color: var(--text); letter-spacing: 1px; padding: 4px 0 8px; cursor: pointer; user-select: none;
+}
+.rest-timer-display.running { color: var(--gold); }
+.rest-timer-display.done { color: var(--accent); animation: restPulse 0.6s ease-in-out 3; }
+@keyframes restPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.rest-timer-controls { display: flex; gap: 8px; justify-content: center; }
+.rest-timer-controls button { min-width: 96px; }
+.rest-presets { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+.rest-preset {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; min-height: 32px;
+}
+.rest-preset.active { background: var(--gold); color: #14161a; border-color: var(--gold); }
 </style>
 </head>
 <body>
@@ -623,7 +639,9 @@ select.swap-picker {
       consistencyBoardLabel: "Consistency (last 8 weeks)", noFriendsYet: "No one has weekly data yet. Set a weekly goal and log a few workouts.",
       recordsBoardLabel: "Records", noRecordsYet: "No records yet. Log a completed set to add yours.",
       youTag: "you",
-      swapExerciseBtn: "Swap exercise", cancelBtn: "Cancel", addAlternateOption: "+ Add different exercise"
+      swapExerciseBtn: "Swap exercise", cancelBtn: "Cancel", addAlternateOption: "+ Add different exercise",
+      restTimerLabel: "Rest Timer", restStartBtn: "Start", restPauseBtn: "Pause", restResetBtn: "Reset",
+      restDoneMsg: "Rest is over. Go!"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -691,7 +709,9 @@ select.swap-picker {
       consistencyBoardLabel: "Redovnost (poslednjih 8 nedelja)", noFriendsYet: "Jos niko nema nedeljne podatke. Podesi nedeljni cilj i zabelezi par treninga.",
       recordsBoardLabel: "Rekordi", noRecordsYet: "Jos nema rekorda. Zabelezi uradjenu seriju da dodas svoj.",
       youTag: "ti",
-      swapExerciseBtn: "Zameni vezbu", cancelBtn: "Otkazi", addAlternateOption: "+ Dodaj drugu vezbu"
+      swapExerciseBtn: "Zameni vezbu", cancelBtn: "Otkazi", addAlternateOption: "+ Dodaj drugu vezbu",
+      restTimerLabel: "Tajmer za Odmor", restStartBtn: "Kreni", restPauseBtn: "Pauza", restResetBtn: "Restartuj",
+      restDoneMsg: "Odmor je gotov. Kreni!"
     }
   };
   function t(key) {
@@ -908,6 +928,116 @@ select.swap-picker {
     } catch (e) {}
   }
 
+  // ---------- rest timer ----------
+  // A simple between-sets countdown so a set doesn't need to be tracked in a
+  // separate stopwatch app. Ticks off wall-clock time (endAt), not a simple
+  // decrementing counter, so it stays accurate even if the browser throttles
+  // timers while the app is backgrounded.
+  var restTimerHandle = null;
+  var audioCtx = null;
+  function ensureAudioCtx() {
+    if (audioCtx) return audioCtx;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) audioCtx = new Ctx();
+    } catch (e) {}
+    return audioCtx;
+  }
+  function playBeep() {
+    var ctx = ensureAudioCtx();
+    if (!ctx) return;
+    try {
+      if (ctx.state === "suspended") ctx.resume();
+      [0, 0.18, 0.36].forEach(function (delay) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = 880;
+        o.connect(g); g.connect(ctx.destination);
+        var t0 = ctx.currentTime + delay;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+        o.start(t0);
+        o.stop(t0 + 0.16);
+      });
+    } catch (e) {}
+  }
+  function fmtClock(totalSeconds) {
+    var total = Math.max(0, Math.round(totalSeconds));
+    var m = Math.floor(total / 60), s = total % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+  function tickRestTimer() {
+    if (restTimerHandle) clearInterval(restTimerHandle);
+    restTimerHandle = setInterval(function () {
+      var rt = state.restTimer;
+      if (!rt.running) { clearInterval(restTimerHandle); restTimerHandle = null; return; }
+      var left = Math.max(0, Math.round((rt.endAt - Date.now()) / 1000));
+      rt.remaining = left;
+      if (left <= 0) {
+        rt.running = false;
+        clearInterval(restTimerHandle);
+        restTimerHandle = null;
+        onRestTimerDone();
+      }
+      render();
+    }, 1000);
+  }
+  function onRestTimerDone() {
+    state.restTimer.justFinished = true;
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]); } catch (e) {}
+    playBeep();
+    if (document.hidden && notifPermission() === "granted") showNotification(t("restDoneMsg"));
+    flash(t("restDoneMsg"));
+    setTimeout(function () { state.restTimer.justFinished = false; render(); }, 3000);
+  }
+  // Always restarts a fresh countdown -- used right after finishing a set,
+  // so every checkbox tap resets the clock rather than requiring a separate tap.
+  function startRestTimer() {
+    ensureAudioCtx();
+    var rt = state.restTimer;
+    rt.remaining = rt.seconds;
+    rt.justFinished = false;
+    rt.endAt = Date.now() + rt.remaining * 1000;
+    rt.running = true;
+    render();
+    tickRestTimer();
+  }
+  function pauseRestTimer() {
+    var rt = state.restTimer;
+    if (!rt.running) return;
+    rt.remaining = Math.max(0, Math.round((rt.endAt - Date.now()) / 1000));
+    rt.running = false;
+    if (restTimerHandle) { clearInterval(restTimerHandle); restTimerHandle = null; }
+    render();
+  }
+  function toggleRestTimer() {
+    ensureAudioCtx();
+    var rt = state.restTimer;
+    if (rt.running) { pauseRestTimer(); return; }
+    if (rt.remaining <= 0) rt.remaining = rt.seconds;
+    rt.justFinished = false;
+    rt.endAt = Date.now() + rt.remaining * 1000;
+    rt.running = true;
+    render();
+    tickRestTimer();
+  }
+  function resetRestTimer() {
+    var rt = state.restTimer;
+    rt.running = false;
+    rt.justFinished = false;
+    rt.remaining = rt.seconds;
+    if (restTimerHandle) { clearInterval(restTimerHandle); restTimerHandle = null; }
+    render();
+  }
+  function setRestSeconds(sec) {
+    sec = Math.max(5, parseInt2(sec) || 90);
+    var rt = state.restTimer;
+    rt.seconds = sec;
+    if (!rt.running) rt.remaining = sec;
+    save("ironlog_rest_seconds", sec);
+    render();
+  }
+
   function enableReminders() {
     if (!notifSupported()) {
       flash("This browser cannot show notifications. The in app reminder still works.");
@@ -1117,6 +1247,10 @@ select.swap-picker {
     saveError: false,
     friendExKey: null,
     swap: null, // { scope: "tpl"|"date", key: <templateId|dateStr>, exId, newName }
+    restTimer: (function () {
+      var secs = parseInt2(load("ironlog_rest_seconds", 90)) || 90;
+      return { seconds: secs, remaining: secs, running: false, endAt: null, justFinished: false };
+    })(),
     cloud: {
       status: "off", // "off" | "ready" (becomes "ready" once signed in, if configured)
       name: load("ironlog_friend_name", ""),
@@ -1511,7 +1645,11 @@ select.swap-picker {
   }
   function toggleCompleteForDate(dateStr, ex) {
     var di = getDateInputs(dateStr);
-    saveLogForDate(dateStr, ex, { completed: !(di[ex.id] && di[ex.id].completed) });
+    var nowCompleted = !(di[ex.id] && di[ex.id].completed);
+    saveLogForDate(dateStr, ex, { completed: nowCompleted });
+    // Checking off a set is the exact moment a rest period begins -- start
+    // the countdown automatically so nothing needs a separate tap.
+    if (nowCompleted && dateStr === todayStr()) startRestTimer();
     render();
   }
   function saveTodayWeight() {
@@ -1968,6 +2106,25 @@ select.swap-picker {
     attachListeners();
   }
 
+  function renderRestTimer() {
+    var rt = state.restTimer;
+    var cls = "rest-timer-display" + (rt.running ? " running" : "") + (rt.justFinished ? " done" : "");
+    var presets = [30, 60, 90, 120, 180];
+    var html = '<div class="card rest-timer-card">' +
+      '<div class="section-label" style="margin-top:0">' + t("restTimerLabel") + "</div>" +
+      '<div class="' + cls + '" id="restTimerDisplay">' + fmtClock(rt.remaining) + "</div>" +
+      '<div class="rest-timer-controls">' +
+      '<button class="add-btn" id="restToggleBtn">' + (rt.running ? t("restPauseBtn") : t("restStartBtn")) + "</button>" +
+      '<button class="ghost-btn" id="restResetBtn">&#8635; ' + t("restResetBtn") + "</button>" +
+      "</div>" +
+      '<div class="rest-presets">';
+    presets.forEach(function (p) {
+      html += '<button class="rest-preset' + (rt.seconds === p ? " active" : "") + '" data-rest-preset="' + p + '">' + p + "s</button>";
+    });
+    html += "</div></div>";
+    return html;
+  }
+
   function renderToday() {
     var ds = todayStr(), dow = todayDow();
     var a = state.assignments[ds];
@@ -2001,6 +2158,7 @@ select.swap-picker {
         (goal ? '<div class="stat"><div class="num" style="color:' + (weekCount >= goal ? "var(--gold)" : "var(--text)") + '">' +
           weekCount + "/" + goal + '</div><div class="lbl">' + t("thisWeekLabel") + "</div></div>" : "") +
         "</div>";
+      html += renderRestTimer();
     }
 
     html += renderSessionEditor(ds);
@@ -2518,6 +2676,17 @@ select.swap-picker {
         var nameInput = row ? row.querySelector("[data-swap-name]") : null;
         swapToNewName(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), nameInput ? nameInput.value : "");
       });
+    });
+
+    // ---- rest timer ----
+    var restToggleBtn = document.getElementById("restToggleBtn");
+    if (restToggleBtn) restToggleBtn.addEventListener("click", toggleRestTimer);
+    var restDisplay = document.getElementById("restTimerDisplay");
+    if (restDisplay) restDisplay.addEventListener("click", toggleRestTimer);
+    var restResetBtn = document.getElementById("restResetBtn");
+    if (restResetBtn) restResetBtn.addEventListener("click", resetRestTimer);
+    app.querySelectorAll("[data-rest-preset]").forEach(function (el) {
+      el.addEventListener("click", function () { setRestSeconds(el.getAttribute("data-rest-preset")); });
     });
 
     var picker = document.getElementById("progressPicker");
