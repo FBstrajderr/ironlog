@@ -372,10 +372,151 @@ textarea.msg-box {
 .week-badge.miss { border: 1px solid var(--accent); color: var(--accent); background: transparent; }
 .week-badge.live { border: 1px dashed var(--border); color: var(--text-muted); background: transparent; }
 .checkbox.disabled { opacity: 0.4; cursor: default; }
+.lb-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.lb-row:last-child { border-bottom: none; }
+.lb-row.me { background: rgba(201,162,39,0.10); margin: 0 -14px; padding: 10px 14px; border-radius: 6px; }
+.lb-name { font-size: 14px; color: var(--text); font-weight: 600; }
+.lb-you { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+.lb-value { font-family: "SFMono-Regular", Consolas, monospace; font-size: 14px; font-weight: 800; color: var(--gold); }
 </style>
 </head>
 <body>
 <div id="app"></div>
+
+<!--
+  Friends / Leaderboard cloud sync (optional).
+  This is completely off unless FIREBASE_CONFIG below is filled in, and the
+  rest of the app works exactly the same either way -- your workouts always
+  stay on this device first. See README.md for step-by-step setup.
+-->
+<script>
+  // Safe no-op stub. If the Firebase module script below never runs (no
+  // internet, FIREBASE_CONFIG left empty, or the CDN is unreachable), the
+  // app calls these functions harmlessly and the Friends tab shows a
+  // "not set up" message instead of crashing anything.
+  window.IronLogCloud = window.IronLogCloud || {
+    configured: false,
+    ready: false,
+    uid: null,
+    onReady: function () {},
+    setName: function () { return Promise.resolve(); },
+    pushRecord: function () { return Promise.resolve(); },
+    pushWeeklyStatus: function () { return Promise.resolve(); },
+    loadBoard: function () { return Promise.resolve({ people: {}, recordsByUser: {}, weeksByUser: {} }); }
+  };
+</script>
+<script type="module">
+  // ---- Firebase setup ----------------------------------------------------
+  // 1. Create a free project at https://console.firebase.google.com
+  // 2. Add a Web app to it (the </> icon) and copy the firebaseConfig object
+  //    it gives you into FIREBASE_CONFIG below.
+  // 3. Build -> Authentication -> Get started -> Sign-in method -> enable
+  //    "Anonymous".
+  // 4. Build -> Firestore Database -> Create database (production mode is
+  //    fine) -> then in the "Rules" tab paste the rules from README.md.
+  // Leave FIREBASE_CONFIG as null to keep this feature off.
+  var FIREBASE_CONFIG = null;
+  /* Example, after step 2:
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSy...",
+    authDomain: "your-project.firebaseapp.com",
+    projectId: "your-project",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "123456789012",
+    appId: "1:123456789012:web:abcdef0123456789"
+  };
+  */
+
+  if (FIREBASE_CONFIG) {
+    (async function () {
+      try {
+        var SDK = "https://www.gstatic.com/firebasejs/12.18.0/";
+        var appMod = await import(SDK + "firebase-app.js");
+        var authMod = await import(SDK + "firebase-auth.js");
+        var fsMod = await import(SDK + "firebase-firestore.js");
+
+        var fbApp = appMod.initializeApp(FIREBASE_CONFIG);
+        var auth = authMod.getAuth(fbApp);
+        var db = fsMod.getFirestore(fbApp);
+        var readyCb = null;
+
+        authMod.onAuthStateChanged(auth, function (user) {
+          if (!user) return;
+          window.IronLogCloud.uid = user.uid;
+          window.IronLogCloud.ready = true;
+          if (readyCb) { var cb = readyCb; readyCb = null; cb(); }
+        });
+        authMod.signInAnonymously(auth).catch(function (e) { console.warn("IronLog cloud sign-in failed:", e); });
+
+        window.IronLogCloud.onReady = function (cb) {
+          if (window.IronLogCloud.ready) cb();
+          else readyCb = cb;
+        };
+
+        window.IronLogCloud.setName = function (name) {
+          var uid = window.IronLogCloud.uid;
+          if (!uid) return Promise.resolve();
+          return fsMod.setDoc(fsMod.doc(db, "users", uid), { name: name, updatedAt: Date.now() }, { merge: true }).catch(function () {});
+        };
+
+        window.IronLogCloud.pushRecord = function (exerciseKey, exerciseName, best, unit) {
+          var uid = window.IronLogCloud.uid;
+          if (!uid) return Promise.resolve();
+          return fsMod.setDoc(fsMod.doc(db, "users", uid, "records", exerciseKey), {
+            exerciseName: exerciseName, best: best, unit: unit, updatedAt: Date.now()
+          }, { merge: true }).catch(function () {});
+        };
+
+        window.IronLogCloud.pushWeeklyStatus = function (weekKey, count, goal) {
+          var uid = window.IronLogCloud.uid;
+          if (!uid) return Promise.resolve();
+          return fsMod.setDoc(fsMod.doc(db, "users", uid, "weeks", weekKey), {
+            count: count, goal: goal, updatedAt: Date.now()
+          }, { merge: true }).catch(function () {});
+        };
+
+        // Reads everyone's public profile + records + weekly status. Done as
+        // plain per-user subcollection reads (not a collection-group query)
+        // so it works with zero Firestore index setup.
+        window.IronLogCloud.loadBoard = function () {
+          return fsMod.getDocs(fsMod.collection(db, "users")).then(function (usersSnap) {
+            var people = {};
+            var jobs = [];
+            usersSnap.forEach(function (d) {
+              var uid = d.id;
+              people[uid] = d.data();
+              jobs.push(fsMod.getDocs(fsMod.collection(db, "users", uid, "records")).then(function (snap) {
+                var recs = [];
+                snap.forEach(function (rd) { recs.push(Object.assign({ key: rd.id }, rd.data())); });
+                return { uid: uid, records: recs };
+              }));
+              jobs.push(fsMod.getDocs(fsMod.collection(db, "users", uid, "weeks")).then(function (snap) {
+                var weeks = {};
+                snap.forEach(function (wd) { weeks[wd.id] = wd.data(); });
+                return { uid: uid, weeks: weeks };
+              }));
+            });
+            return Promise.all(jobs).then(function (results) {
+              var recordsByUser = {}, weeksByUser = {};
+              results.forEach(function (r) {
+                if (r.records) recordsByUser[r.uid] = r.records;
+                if (r.weeks) weeksByUser[r.uid] = r.weeks;
+              });
+              return { people: people, recordsByUser: recordsByUser, weeksByUser: weeksByUser };
+            });
+          });
+        };
+
+        window.IronLogCloud.configured = true;
+      } catch (e) {
+        console.warn("IronLog cloud sync unavailable:", e);
+      }
+    })();
+  }
+</script>
 
 <script>
 (function () {
@@ -457,8 +598,16 @@ textarea.msg-box {
       chooseWorkoutPrompt: "Which workout are you doing?",
       weeklyGoalLabel: "Weekly Goal", timesPerWeekSuffix: "x / week", thisWeekLabel: "This Week",
       changeWorkoutBtn: "Change workout",
-      workoutForDayLabel: "Workout", restOrChoose: "— Rest day / choose a workout —",
-      newExerciseOption: "+ New exercise", newExerciseNameLabel: "New Exercise Name"
+      workoutForDayLabel: "Workout", restOrChoose: "😴 Rest day",
+      newExerciseOption: "+ New exercise", newExerciseNameLabel: "New Exercise Name",
+      tabFriends: "Friends",
+      friendsNotConfigured: "This feature isn't set up yet. Ask whoever maintains the app to add the shared database (see README.md) -- then everyone will see this automatically, no update needed on your end.",
+      yourFriendNameLabel: "Your Name (shown to friends)", friendsNameHint: "Pick a name your friends will recognize. You can change it later.",
+      editNameBtn: "Edit name", refreshBtn: "Refresh", loadingText: "Loading...",
+      friendsOfflineNote: "Could not reach the shared database. Check your connection and try Refresh.",
+      consistencyBoardLabel: "Consistency (last 8 weeks)", noFriendsYet: "No one has weekly data yet. Set a weekly goal and log a few workouts.",
+      recordsBoardLabel: "Records", noRecordsYet: "No records yet. Log a completed set to add yours.",
+      youTag: "you"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -516,8 +665,16 @@ textarea.msg-box {
       chooseWorkoutPrompt: "Koji trening radis?",
       weeklyGoalLabel: "Nedeljni Cilj", timesPerWeekSuffix: "x / nedeljno", thisWeekLabel: "Ova Nedelja",
       changeWorkoutBtn: "Promeni Trening",
-      workoutForDayLabel: "Trening", restOrChoose: "— Dan odmora / izaberi trening —",
-      newExerciseOption: "+ Nova vezba", newExerciseNameLabel: "Naziv Nove Vezbe"
+      workoutForDayLabel: "Trening", restOrChoose: "😴 Dan odmora",
+      newExerciseOption: "+ Nova vezba", newExerciseNameLabel: "Naziv Nove Vezbe",
+      tabFriends: "Drugari",
+      friendsNotConfigured: "Ova opcija jos nije podesena. Zamoli onoga ko odrzava app da doda zajednicku bazu (pogledaj README.md) -- onda ce svi ovo automatski videti, bez potrebe da ti nesto azuriras.",
+      yourFriendNameLabel: "Tvoje Ime (vide ga drugari)", friendsNameHint: "Izaberi ime koje ce drugari prepoznati. Mozes da ga promenis kasnije.",
+      editNameBtn: "Izmeni ime", refreshBtn: "Osvezi", loadingText: "Ucitavanje...",
+      friendsOfflineNote: "Nije uspelo povezivanje sa zajednickom bazom. Proveri internet i probaj Osvezi.",
+      consistencyBoardLabel: "Redovnost (poslednjih 8 nedelja)", noFriendsYet: "Jos niko nema nedeljne podatke. Podesi nedeljni cilj i zabelezi par treninga.",
+      recordsBoardLabel: "Rekordi", noRecordsYet: "Jos nema rekorda. Zabelezi uradjenu seriju da dodas svoj.",
+      youTag: "ti"
     }
   };
   function t(key) {
@@ -769,7 +926,7 @@ textarea.msg-box {
     render();
   }
 
-  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs", "ironlog_templates", "ironlog_assignments", "ironlog_exercises"];
+  var BACKUP_KEYS = ["ironlog_week", "ironlog_day_labels", "ironlog_logs", "ironlog_profile", "ironlog_weight_logs", "ironlog_templates", "ironlog_assignments", "ironlog_exercises", "ironlog_friend_name"];
 
   function exportData() {
     var payload = { app: "IronLog", version: 1, exportedAt: new Date().toISOString(), data: {} };
@@ -782,6 +939,7 @@ textarea.msg-box {
     payload.data.ironlog_assignments = state.assignments;
     payload.data.ironlog_exercises = state.library;
     payload.data.ironlog_reminders = state.reminders;
+    payload.data.ironlog_friend_name = state.cloud.name;
     var text = JSON.stringify(payload, null, 2);
     var name = "ironlog-backup-" + todayStr() + ".json";
     try {
@@ -829,6 +987,7 @@ textarea.msg-box {
     state.assignments = (d.ironlog_assignments && typeof d.ironlog_assignments === "object") ? d.ironlog_assignments : {};
     state.library = Array.isArray(d.ironlog_exercises) ? d.ironlog_exercises : [];
     if (d.ironlog_reminders) { state.reminders = normalizeReminders(d.ironlog_reminders); persistReminders(); }
+    if (typeof d.ironlog_friend_name === "string") { state.cloud.name = d.ironlog_friend_name; persistFriendName(); }
     persistWeek(); persistDayLabels(); persistLogs(); persistProfile(); persistWeightLogs(); persistTemplates(); persistAssignments(); persistLibrary();
     if (!state.templates.length) migrateLegacyIfNeeded(); // old-format backup: build workouts from its weekday plan
     migrateLibraryIfNeeded();
@@ -837,6 +996,7 @@ textarea.msg-box {
     state.selectedTemplateId = state.templates.length ? state.templates[0].id : null;
     var all = allExercises();
     state.progressExKey = all.length ? all[0].key : null;
+    if (cloudReady()) { pushAllRecords(); pushCurrentWeekStatus(); }
     flash("Backup restored.");
     render();
   }
@@ -937,7 +1097,16 @@ textarea.msg-box {
     selectedTemplateId: null,
     todayWeightInput: "",
     selectedDate: null,
-    saveError: false
+    saveError: false,
+    friendExKey: null,
+    cloud: {
+      status: "off", // "off" | "ready" (becomes "ready" once signed in, if configured)
+      name: load("ironlog_friend_name", ""),
+      editingName: false,
+      board: null,
+      loading: false,
+      error: false
+    }
   };
   if (typeof state.profile.weeklyGoal !== "number") state.profile.weeklyGoal = 3;
 
@@ -1160,10 +1329,11 @@ textarea.msg-box {
     persistAssignments();
     refreshDateInputs(dateStr);
   }
-  // Whenever a weight is logged against a workout that came from a saved
-  // template, remember it on the template too, so the next time that
-  // workout is picked it starts from the weight you actually used last.
-  function syncTemplateWeight(dateStr, exId, weight) {
+  // Whenever weight/sets/reps are logged against a workout that came from a
+  // saved template, write those numbers back onto the template too, so the
+  // Workouts tab always reflects what you actually did last, and the next
+  // time that workout is picked it starts from those same numbers.
+  function syncTemplateFromLog(dateStr, exId, weight, sets, reps) {
     var a = state.assignments[dateStr];
     if (!a || !a.templateId) return;
     var aex = a.exercises.find(function (e) { return e.id === exId; });
@@ -1171,9 +1341,12 @@ textarea.msg-box {
     var tpl = templateById(a.templateId);
     if (!tpl) return;
     var tex = tpl.exercises.find(function (e) { return e.id === aex.srcExId; });
-    if (!tex || tex.weight === weight) return;
-    tex.weight = weight;
-    persistTemplates();
+    if (!tex) return;
+    var changed = false;
+    if (tex.weight !== weight) { tex.weight = weight; changed = true; }
+    if (tex.sets !== sets) { tex.sets = sets; changed = true; }
+    if (tex.reps !== reps) { tex.reps = reps; changed = true; }
+    if (changed) persistTemplates();
   }
   function saveLogForDate(dateStr, ex, overrides) {
     overrides = overrides || {};
@@ -1195,7 +1368,9 @@ textarea.msg-box {
     state.dateInputs[dateStr][ex.id] = {
       weight: entry.weight, sets: entry.sets, reps: entry.reps, completed: entry.completed
     };
-    syncTemplateWeight(dateStr, ex.id, entry.weight);
+    syncTemplateFromLog(dateStr, ex.id, entry.weight, entry.sets, entry.reps);
+    if (entry.completed) pushRecordForExercise(ex);
+    pushCurrentWeekStatus();
   }
   function toggleCompleteForDate(dateStr, ex) {
     var di = getDateInputs(dateStr);
@@ -1331,6 +1506,82 @@ textarea.msg-box {
       }
     });
     return best;
+  }
+  function allTimePR(key) {
+    var best = null;
+    state.logs.forEach(function (l) {
+      if (logKey(l) === key && l.completed) {
+        if (best == null || l.weight > best) best = l.weight;
+      }
+    });
+    return best;
+  }
+
+  // ---------- friends / cloud sync (optional, off unless Firebase is configured) ----------
+  function cloudConfigured() { return !!(window.IronLogCloud && window.IronLogCloud.configured); }
+  function cloudReady() { return cloudConfigured() && state.cloud.status === "ready"; }
+  function persistFriendName() { save("ironlog_friend_name", state.cloud.name); }
+
+  function initCloud() {
+    if (!cloudConfigured()) return;
+    window.IronLogCloud.onReady(function () {
+      state.cloud.status = "ready";
+      if (state.cloud.name) window.IronLogCloud.setName(state.cloud.name);
+      pushAllRecords();
+      pushCurrentWeekStatus();
+      if (state.tab === "friends" && state.cloud.name && !state.cloud.board) loadFriendsBoard();
+      render();
+    });
+  }
+
+  function pushAllRecords() {
+    if (!cloudReady()) return;
+    allExercises().forEach(function (e) {
+      var pr = allTimePR(e.key);
+      if (pr != null) window.IronLogCloud.pushRecord(e.key, e.name, pr, e.unit);
+    });
+  }
+
+  function pushRecordForExercise(ex) {
+    if (!cloudReady()) return;
+    var key = exKey(ex);
+    var pr = allTimePR(key);
+    if (pr != null) window.IronLogCloud.pushRecord(key, ex.name, pr, ex.unit);
+  }
+
+  function pushCurrentWeekStatus() {
+    if (!cloudReady()) return;
+    var goal = weeklyGoal();
+    if (!goal) return;
+    window.IronLogCloud.pushWeeklyStatus(toKey(mondayOfThisWeek()), thisWeekTrainedCount(), goal);
+  }
+
+  function saveFriendName(name) {
+    state.cloud.name = name;
+    state.cloud.editingName = false;
+    persistFriendName();
+    if (cloudReady()) {
+      window.IronLogCloud.setName(name);
+      pushAllRecords();
+      pushCurrentWeekStatus();
+      loadFriendsBoard();
+    }
+  }
+
+  function loadFriendsBoard() {
+    if (!cloudReady()) return;
+    state.cloud.loading = true;
+    state.cloud.error = false;
+    render();
+    window.IronLogCloud.loadBoard().then(function (board) {
+      state.cloud.board = board;
+      state.cloud.loading = false;
+      render();
+    }).catch(function () {
+      state.cloud.loading = false;
+      state.cloud.error = true;
+      render();
+    });
   }
   function computeBMI() {
     var h = parseNum(state.profile.height);
@@ -1562,11 +1813,13 @@ textarea.msg-box {
       '<button class="tab-btn ' + (state.tab === "today" ? "active" : "") + '" data-tab="today">&#128197; ' + t("tabToday") + "</button>" +
       '<button class="tab-btn ' + (state.tab === "plan" ? "active" : "") + '" data-tab="plan">&#127947; ' + t("tabPlan") + "</button>" +
       '<button class="tab-btn ' + (state.tab === "progress" ? "active" : "") + '" data-tab="progress">&#128200; ' + t("tabProgress") + "</button>" +
-      '<button class="tab-btn ' + (state.tab === "profile" ? "active" : "") + '" data-tab="profile">&#128100; ' + t("tabProfile") + "</button></div>");
+      '<button class="tab-btn ' + (state.tab === "profile" ? "active" : "") + '" data-tab="profile">&#128100; ' + t("tabProfile") + "</button>" +
+      '<button class="tab-btn ' + (state.tab === "friends" ? "active" : "") + '" data-tab="friends">&#127942; ' + t("tabFriends") + "</button></div>");
 
     if (state.tab === "today") parts.push(renderToday());
     else if (state.tab === "plan") parts.push(renderPlan());
     else if (state.tab === "progress") parts.push(renderProgress());
+    else if (state.tab === "friends") parts.push(renderFriends());
     else parts.push(renderProfile());
 
     app.innerHTML = parts.join("");
@@ -1838,6 +2091,104 @@ textarea.msg-box {
     return html;
   }
 
+  function renderFriends() {
+    if (!cloudConfigured()) {
+      return '<div class="empty">' + t("friendsNotConfigured") + "</div>";
+    }
+    if (!cloudReady()) {
+      return '<div class="empty">' + t("loadingText") + "</div>";
+    }
+
+    var html = "";
+    if (!state.cloud.name || state.cloud.editingName) {
+      html += '<div class="card"><div class="add-form">' +
+        '<div class="field name"><label>' + t("yourFriendNameLabel") + '</label>' +
+        '<input id="friendNameInput" placeholder="' + t("yourName") + '" value="' + esc(state.cloud.name) + '" /></div>' +
+        '<button class="add-btn" id="saveFriendNameBtn">' + t("save") + "</button>" +
+        "</div><div class=\"hint\">" + t("friendsNameHint") + "</div></div>";
+      return html;
+    }
+
+    html += '<div class="card"><div class="backup-row">' +
+      '<div class="detail-sub" style="flex:1">' + esc(state.cloud.name) + "</div>" +
+      '<button class="ghost-btn" id="editFriendNameBtn">' + t("editNameBtn") + "</button>" +
+      '<button class="ghost-btn" id="refreshFriendsBtn">' + t("refreshBtn") + "</button>" +
+      "</div></div>";
+
+    if (state.cloud.loading && !state.cloud.board) {
+      html += '<div class="empty">' + t("loadingText") + "</div>";
+      return html;
+    }
+    if (state.cloud.error && !state.cloud.board) {
+      html += '<div class="empty">' + t("friendsOfflineNote") + "</div>";
+      return html;
+    }
+
+    var board = state.cloud.board || { people: {}, recordsByUser: {}, weeksByUser: {} };
+    var myUid = window.IronLogCloud.uid;
+
+    // ---- consistency leaderboard: share of the last (up to) 8 logged weeks each person hit their goal ----
+    html += '<div class="section-label">' + t("consistencyBoardLabel") + "</div>";
+    var consistency = [];
+    Object.keys(board.people).forEach(function (uid) {
+      var weeks = board.weeksByUser[uid] || {};
+      var weekKeys = Object.keys(weeks).sort().slice(-8);
+      if (!weekKeys.length) return;
+      var hit = 0;
+      weekKeys.forEach(function (wk) { var w = weeks[wk]; if (w.goal && w.count >= w.goal) hit++; });
+      consistency.push({ uid: uid, name: (board.people[uid] && board.people[uid].name) || "?", hit: hit, total: weekKeys.length });
+    });
+    consistency.sort(function (a, b) { return (b.hit / b.total) - (a.hit / a.total); });
+    if (!consistency.length) {
+      html += '<div class="empty">' + t("noFriendsYet") + "</div>";
+    } else {
+      html += '<div class="card">';
+      consistency.forEach(function (p, i) {
+        var isMe = p.uid === myUid;
+        html += '<div class="lb-row' + (isMe ? " me" : "") + '">' +
+          '<div class="lb-name">' + (i === 0 ? "🏆 " : "") + esc(p.name) + (isMe ? '<span class="lb-you">(' + t("youTag") + ")</span>" : "") + "</div>" +
+          '<div class="lb-value">' + p.hit + "/" + p.total + "</div></div>";
+      });
+      html += "</div>";
+    }
+
+    // ---- per-exercise records leaderboard ----
+    html += '<div class="section-label">' + t("recordsBoardLabel") + "</div>";
+    var exerciseMap = {};
+    Object.keys(board.recordsByUser).forEach(function (uid) {
+      board.recordsByUser[uid].forEach(function (r) {
+        if (!exerciseMap[r.key]) exerciseMap[r.key] = { name: r.exerciseName, unit: r.unit };
+      });
+    });
+    var exKeysList = Object.keys(exerciseMap).sort(function (a, b) { return exerciseMap[a].name.localeCompare(exerciseMap[b].name); });
+    if (!exKeysList.length) {
+      html += '<div class="empty">' + t("noRecordsYet") + "</div>";
+      return html;
+    }
+    var curKey = (state.friendExKey && exerciseMap[state.friendExKey]) ? state.friendExKey : exKeysList[0];
+    html += '<select class="ex-picker" id="friendExPicker">';
+    exKeysList.forEach(function (k) {
+      html += '<option value="' + esc(k) + '"' + (k === curKey ? " selected" : "") + ">" + esc(exerciseMap[k].name) + "</option>";
+    });
+    html += "</select>";
+
+    var rows = [];
+    Object.keys(board.recordsByUser).forEach(function (uid) {
+      var rec = board.recordsByUser[uid].find(function (r) { return r.key === curKey; });
+      if (rec) rows.push({ uid: uid, name: (board.people[uid] && board.people[uid].name) || "?", best: rec.best, unit: rec.unit });
+    });
+    rows.sort(function (a, b) { return b.best - a.best; });
+    html += '<div class="card">';
+    rows.forEach(function (r, i) {
+      var isMe = r.uid === myUid;
+      html += '<div class="lb-row' + (isMe ? " me" : "") + '">' +
+        '<div class="lb-name">' + (i === 0 ? "🏆 " : "") + esc(r.name) + (isMe ? '<span class="lb-you">(' + t("youTag") + ")</span>" : "") + "</div>" +
+        '<div class="lb-value">' + r.best + esc(r.unit) + "</div></div>";
+    });
+    html += "</div>";
+    return html;
+  }
+
   // ---------- listeners ----------
   function attachListeners() {
     // Any field meant for a decimal number: convert a typed comma to a period
@@ -1855,6 +2206,9 @@ textarea.msg-box {
       btn.addEventListener("click", function () {
         state.tab = btn.getAttribute("data-tab");
         state.selectedDate = null;
+        if (state.tab === "friends" && cloudReady() && state.cloud.name && !state.cloud.board && !state.cloud.loading) {
+          loadFriendsBoard();
+        }
         render();
       });
     });
@@ -2091,11 +2445,33 @@ textarea.msg-box {
             ironlog_templates: state.templates,
             ironlog_assignments: state.assignments,
             ironlog_exercises: state.library,
-            ironlog_reminders: state.reminders
+            ironlog_reminders: state.reminders,
+            ironlog_friend_name: state.cloud.name
           }
         }, null, 2));
       });
     }
+
+    var friendNameInput = document.getElementById("friendNameInput");
+    var saveFriendNameBtn = document.getElementById("saveFriendNameBtn");
+    if (friendNameInput && saveFriendNameBtn) {
+      var doSaveFriendName = function () {
+        var v = friendNameInput.value.trim();
+        if (!v) return;
+        saveFriendName(v);
+        render();
+      };
+      saveFriendNameBtn.addEventListener("click", doSaveFriendName);
+      friendNameInput.addEventListener("keydown", function (ev) { if (ev.key === "Enter") doSaveFriendName(); });
+    }
+    var editFriendNameBtn = document.getElementById("editFriendNameBtn");
+    if (editFriendNameBtn) {
+      editFriendNameBtn.addEventListener("click", function () { state.cloud.editingName = true; render(); });
+    }
+    var refreshFriendsBtn = document.getElementById("refreshFriendsBtn");
+    if (refreshFriendsBtn) refreshFriendsBtn.addEventListener("click", loadFriendsBoard);
+    var friendExPicker = document.getElementById("friendExPicker");
+    if (friendExPicker) friendExPicker.addEventListener("change", function () { state.friendExKey = friendExPicker.value; render(); });
 
     var importBtn = document.getElementById("importBtn");
     var importFile = document.getElementById("importFile");
@@ -2113,6 +2489,7 @@ textarea.msg-box {
   }
 
   render();
+  initCloud();
 
   scheduleReminder();
   maybeNotifyNow();
