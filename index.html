@@ -381,6 +381,20 @@ textarea.msg-box {
 .lb-name { font-size: 14px; color: var(--text); font-weight: 600; }
 .lb-you { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
 .lb-value { font-family: "SFMono-Regular", Consolas, monospace; font-size: 14px; font-weight: 800; color: var(--gold); }
+.swap-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px; padding: 11px 13px; cursor: pointer; font-size: 15px;
+  min-height: 44px;
+}
+.swap-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
+select.swap-picker {
+  flex: 1; min-width: 130px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 9px; font-weight: 700; font-size: 13px;
+}
+.swap-row .swap-name-input {
+  flex: 1; min-width: 100px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-weight: 700; padding: 9px; font-size: 14px;
+}
 </style>
 </head>
 <body>
@@ -607,7 +621,8 @@ textarea.msg-box {
       friendsOfflineNote: "Could not reach the shared database. Check your connection and try Refresh.",
       consistencyBoardLabel: "Consistency (last 8 weeks)", noFriendsYet: "No one has weekly data yet. Set a weekly goal and log a few workouts.",
       recordsBoardLabel: "Records", noRecordsYet: "No records yet. Log a completed set to add yours.",
-      youTag: "you"
+      youTag: "you",
+      swapExerciseBtn: "Swap exercise", cancelBtn: "Cancel", addAlternateOption: "+ Add different exercise"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -674,7 +689,8 @@ textarea.msg-box {
       friendsOfflineNote: "Nije uspelo povezivanje sa zajednickom bazom. Proveri internet i probaj Osvezi.",
       consistencyBoardLabel: "Redovnost (poslednjih 8 nedelja)", noFriendsYet: "Jos niko nema nedeljne podatke. Podesi nedeljni cilj i zabelezi par treninga.",
       recordsBoardLabel: "Rekordi", noRecordsYet: "Jos nema rekorda. Zabelezi uradjenu seriju da dodas svoj.",
-      youTag: "ti"
+      youTag: "ti",
+      swapExerciseBtn: "Zameni vezbu", cancelBtn: "Otkazi", addAlternateOption: "+ Dodaj drugu vezbu"
     }
   };
   function t(key) {
@@ -1099,6 +1115,7 @@ textarea.msg-box {
     selectedDate: null,
     saveError: false,
     friendExKey: null,
+    swap: null, // { scope: "tpl"|"date", key: <templateId|dateStr>, exId, newName }
     cloud: {
       status: "off", // "off" | "ready" (becomes "ready" once signed in, if configured)
       name: load("ironlog_friend_name", ""),
@@ -1314,6 +1331,120 @@ textarea.msg-box {
       : (field === "weight" ? parseNum(value) : parseInt2(value));
     persistTemplates();
   }
+
+  // ---------- swapping one exercise for another, in a workout or in a day's session ----------
+  // Each template exercise slot keeps its own small stack of exercises it has
+  // ever held (ex.alts), so swapping day-to-day only offers to switch among
+  // exercises you have personally put in that slot before -- never the whole
+  // exercise library. Adding a genuinely different exercise (from the library,
+  // or brand new) grows that slot's stack by one; the exercise you just moved
+  // away from is kept as an alternate, so it is one tap to go back to it later.
+  function canonicalSlot(scope, key, exId) {
+    if (scope === "tpl") {
+      var tpl = templateById(key);
+      var ex = tpl ? tpl.exercises.find(function (e) { return e.id === exId; }) : null;
+      return ex ? { obj: ex, ownerType: "tpl", dateEx: null } : null;
+    }
+    var a = state.assignments[key];
+    var dateEx = a ? a.exercises.find(function (e) { return e.id === exId; }) : null;
+    if (!dateEx) return null;
+    if (dateEx.srcExId && a.templateId) {
+      var tpl2 = templateById(a.templateId);
+      var tex = tpl2 ? tpl2.exercises.find(function (e) { return e.id === dateEx.srcExId; }) : null;
+      if (tex) return { obj: tex, ownerType: "tpl", dateEx: dateEx };
+    }
+    return { obj: dateEx, ownerType: "date", dateEx: dateEx };
+  }
+  function getAlts(scope, key, exId) {
+    var slot = canonicalSlot(scope, key, exId);
+    return slot ? (slot.obj.alts || []) : [];
+  }
+  function openSwap(scope, key, exId) {
+    state.swap = { scope: scope, key: key, exId: exId, mode: "quick", newName: "" };
+    render();
+  }
+  function cancelSwap() {
+    state.swap = null;
+    render();
+  }
+  function isSwapTarget(scope, key, exId) {
+    return !!(state.swap && state.swap.scope === scope && state.swap.key === key && state.swap.exId === exId);
+  }
+  function swapWithinSlot(scope, key, exId, spec) {
+    var slot = canonicalSlot(scope, key, exId);
+    if (!slot) { state.swap = null; render(); return; }
+    var obj = slot.obj;
+    obj.alts = (obj.alts || []).filter(function (a) { return exKey(a) !== exKey(spec); });
+    obj.alts.push({ name: obj.name, sets: obj.sets, reps: obj.reps, weight: obj.weight, unit: obj.unit });
+    obj.name = spec.name; obj.sets = spec.sets; obj.reps = spec.reps; obj.weight = spec.weight; obj.unit = spec.unit;
+
+    if (slot.ownerType === "tpl") persistTemplates();
+    if (slot.dateEx && slot.dateEx !== obj) {
+      slot.dateEx.name = spec.name; slot.dateEx.sets = spec.sets; slot.dateEx.reps = spec.reps; slot.dateEx.weight = spec.weight; slot.dateEx.unit = spec.unit;
+    }
+    if (slot.dateEx) {
+      state.dateInputs[key] = state.dateInputs[key] || {};
+      state.dateInputs[key][exId] = { weight: spec.weight, sets: spec.sets, reps: spec.reps, completed: false };
+      persistAssignments();
+    }
+    addToLibraryIfNew(spec);
+    state.swap = null;
+    render();
+  }
+  function quickSwapToAlt(scope, key, exId, altIndex) {
+    var alts = getAlts(scope, key, exId);
+    var alt = alts[parseInt2(altIndex)];
+    if (!alt) return;
+    swapWithinSlot(scope, key, exId, alt);
+  }
+  function swapToLibraryEntry(scope, key, exId, libId) {
+    var le = libraryEntry(libId);
+    if (!le) return;
+    swapWithinSlot(scope, key, exId, { name: le.name, sets: le.sets, reps: le.reps, weight: le.weight, unit: le.unit });
+  }
+  function swapToNewName(scope, key, exId, name) {
+    name = (name || "").trim();
+    if (!name) return;
+    var slot = canonicalSlot(scope, key, exId);
+    if (!slot) return;
+    var cur = slot.obj;
+    swapWithinSlot(scope, key, exId, { name: name, sets: cur.sets, reps: cur.reps, weight: cur.weight, unit: cur.unit });
+  }
+  function renderSwapPicker(scope, key, exId) {
+    var sw = state.swap;
+    var slot = canonicalSlot(scope, key, exId);
+    var alts = slot ? (slot.obj.alts || []) : [];
+    var showAddForm = !slot || !alts.length || (sw && sw.mode === "add");
+
+    if (!showAddForm) {
+      var qhtml = '<div class="swap-row">' +
+        '<select class="swap-picker" data-swap-quick="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '">' +
+        '<option value="cur">' + esc(slot.obj.name) + "</option>";
+      alts.forEach(function (a, i) {
+        qhtml += '<option value="' + i + '">' + esc(a.name) + "</option>";
+      });
+      qhtml += '<option value="__add__">' + t("addAlternateOption") + "</option>" +
+        "</select>" +
+        '<button class="ghost-btn" data-swap-cancel="1" aria-label="' + t("cancelBtn") + '">&#10005;</button>' +
+        "</div>";
+      return qhtml;
+    }
+
+    var html = '<div class="swap-row">' +
+      '<select class="swap-picker" data-swap-lib="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '">' +
+      '<option value="">' + t("newExerciseOption") + "</option>";
+    state.library.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (le) {
+      html += '<option value="' + le.id + '">' + esc(le.name) + "</option>";
+    });
+    html += "</select>" +
+      '<input class="swap-name-input" placeholder="' + t("exPlaceholder") + '" value="' + esc(sw ? sw.newName : "") + '" ' +
+      'data-swap-name="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '" />' +
+      '<button class="add-btn swap-confirm-btn" data-swap-confirm="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '">&#10003;</button>' +
+      (alts.length ? '<button class="ghost-btn" data-swap-back="1">&#8592;</button>' : "") +
+      '<button class="ghost-btn" data-swap-cancel="1" aria-label="' + t("cancelBtn") + '">&#10005;</button>' +
+      "</div>";
+    return html;
+  }
   function assignTemplateToDate(dateStr, templateId) {
     var tpl = templateById(templateId);
     if (!tpl) return;
@@ -1324,8 +1455,13 @@ textarea.msg-box {
     persistAssignments();
     refreshDateInputs(dateStr);
   }
+  // Explicitly marks a day as a rest day. This sets an assignment with zero
+  // exercises rather than just deleting it -- deleting would make the day
+  // fall back to any old weekday-based plan still sitting in storage from
+  // before workouts existed, which used to make a rest day quietly show
+  // yesterday's exercises again and count as "missed".
   function clearAssignment(dateStr) {
-    delete state.assignments[dateStr];
+    state.assignments[dateStr] = { templateId: null, templateName: "", exercises: [] };
     persistAssignments();
     refreshDateInputs(dateStr);
   }
@@ -1595,7 +1731,7 @@ textarea.msg-box {
   }
   function labelForDate(dateStr, dow) {
     var a = state.assignments[dateStr];
-    return a ? dayNames()[dow] + " \u00b7 " + a.templateName : dayNames()[dow];
+    return a ? dayNames()[dow] + " \u00b7 " + (a.templateName || t("rest")) : dayNames()[dow];
   }
 
   // ---------- chart ----------
@@ -1701,11 +1837,16 @@ textarea.msg-box {
 
     var di = getDateInputs(dateStr);
     exs.forEach(function (ex) {
+      if (isSwapTarget("date", dateStr, ex.id)) {
+        html += '<div class="card">' + renderSwapPicker("date", dateStr, ex.id) + "</div>";
+        return;
+      }
       var s = di[ex.id] || { weight: ex.weight, sets: ex.sets, reps: ex.reps, completed: false };
       html += '<div class="card"><div class="ex-row">' +
         '<div class="checkbox' + (s.completed ? " checked" : "") + '" data-action="toggleDate" data-sdate="' + dateStr + '" data-id="' + ex.id + '">' +
         (s.completed ? "&#10003;" : "") + "</div>" +
         '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
+        '<button class="swap-btn" data-swap-open="1" data-swap-scope="date" data-swap-key="' + dateStr + '" data-swap-ex="' + ex.id + '" title="' + t("swapExerciseBtn") + '">&#8646;</button>' +
         '<div class="inputs">' +
         '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
         '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
@@ -1829,7 +1970,7 @@ textarea.msg-box {
   function renderToday() {
     var ds = todayStr(), dow = todayDow();
     var a = state.assignments[ds];
-    var bannerLabel = a ? a.templateName : dayNames()[dow];
+    var bannerLabel = a ? (a.templateName || t("rest")) : dayNames()[dow];
     var html = "";
     if (workoutPending()) {
       html += '<div class="nag-bar"><div class="msg">' + esc(currentMessage()) + "</div>" +
@@ -1912,8 +2053,13 @@ textarea.msg-box {
     }
 
     tpl.exercises.forEach(function (ex) {
+      if (isSwapTarget("tpl", tpl.id, ex.id)) {
+        html += '<div class="card"><div class="plan-item">' + renderSwapPicker("tpl", tpl.id, ex.id) + "</div></div>";
+        return;
+      }
       html += '<div class="card"><div class="plan-item">' +
         '<input class="name-input" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
+        '<button class="swap-btn" data-swap-open="1" data-swap-scope="tpl" data-swap-key="' + tpl.id + '" data-swap-ex="' + ex.id + '" title="' + t("swapExerciseBtn") + '">&#8646;</button>' +
         '<div class="inputs">' +
         '<div><label>' + t("sets") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
         '<div><label>' + t("reps") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
@@ -2318,6 +2464,50 @@ textarea.msg-box {
       };
       el.addEventListener("change", h);
       el.addEventListener("blur", h);
+    });
+
+    // ---- swap exercise (Today session editor + Workouts tab) ----
+    app.querySelectorAll("[data-swap-open]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        openSwap(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"));
+      });
+    });
+    app.querySelectorAll("[data-swap-cancel]").forEach(function (el) {
+      el.addEventListener("click", cancelSwap);
+    });
+    app.querySelectorAll("[data-swap-back]").forEach(function (el) {
+      el.addEventListener("click", function () { if (state.swap) { state.swap.mode = "quick"; render(); } });
+    });
+    app.querySelectorAll("[data-swap-quick]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var scope = el.getAttribute("data-swap-scope"), key = el.getAttribute("data-swap-key"), exId = el.getAttribute("data-swap-ex");
+        if (el.value === "__add__") { if (state.swap) { state.swap.mode = "add"; render(); } return; }
+        if (el.value === "cur") return;
+        quickSwapToAlt(scope, key, exId, el.value);
+      });
+    });
+    app.querySelectorAll("[data-swap-lib]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        if (!el.value) return; // still on "+ New exercise" -- wait for the name field instead
+        swapToLibraryEntry(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), el.value);
+      });
+    });
+    app.querySelectorAll("[data-swap-name]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        if (state.swap) state.swap.newName = el.value;
+      });
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          swapToNewName(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), el.value);
+        }
+      });
+    });
+    app.querySelectorAll("[data-swap-confirm]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var row = el.closest(".swap-row");
+        var nameInput = row ? row.querySelector("[data-swap-name]") : null;
+        swapToNewName(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), nameInput ? nameInput.value : "");
+      });
     });
 
     var picker = document.getElementById("progressPicker");
