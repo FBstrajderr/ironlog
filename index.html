@@ -381,11 +381,12 @@ textarea.msg-box {
 .lb-name { font-size: 14px; color: var(--text); font-weight: 600; }
 .lb-you { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
 .lb-value { font-family: "SFMono-Regular", Consolas, monospace; font-size: 14px; font-weight: 800; color: var(--gold); }
-.swap-btn {
-  background: none; border: 1px solid var(--border); color: var(--text-muted);
-  border-radius: 6px; padding: 11px 13px; cursor: pointer; font-size: 15px;
-  min-height: 44px;
+.swap-link {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 8px 0 2px; margin: 0; cursor: pointer; display: flex; align-items: center; gap: 4px;
 }
+.swap-link:active { color: var(--gold); }
 .swap-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
 select.swap-picker {
   flex: 1; min-width: 130px; background: var(--panel-2); border: 1px solid var(--border);
@@ -1846,12 +1847,12 @@ select.swap-picker {
         '<div class="checkbox' + (s.completed ? " checked" : "") + '" data-action="toggleDate" data-sdate="' + dateStr + '" data-id="' + ex.id + '">' +
         (s.completed ? "&#10003;" : "") + "</div>" +
         '<div class="ex-name">' + esc(ex.name) + '<span class="ex-target">' + t("target") + ex.sets + "x" + ex.reps + " @ " + ex.weight + ex.unit + "</span></div>" +
-        '<button class="swap-btn" data-swap-open="1" data-swap-scope="date" data-swap-key="' + dateStr + '" data-swap-ex="' + ex.id + '" title="' + t("swapExerciseBtn") + '">&#8646;</button>' +
         '<div class="inputs">' +
         '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-field="weight" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.weight + '" /></div>' +
         '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
         '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
-        "</div></div></div>";
+        "</div></div>" +
+        '<button class="swap-link" data-swap-open="1" data-swap-scope="date" data-swap-key="' + dateStr + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button></div>";
     });
     return html;
   }
@@ -1977,7 +1978,16 @@ select.swap-picker {
         '<div class="sub2">' + esc(bannerLabel) + t("isWaiting") + "</div></div>";
     }
     html += weekStripHTML();
-    if (state.selectedDate) html += dayDetailHTML(state.selectedDate);
+
+    // A day picked from the week strip takes over the whole view below it --
+    // its own detail card already has the full exercise list, stats and a
+    // close button, so today's own banner/list stays hidden meanwhile
+    // instead of showing both days' exercises at once.
+    if (state.selectedDate) {
+      html += dayDetailHTML(state.selectedDate);
+      return html;
+    }
+
     html += '<div class="day-banner">' + esc(bannerLabel) + "</div>";
 
     var exs = exercisesForDate(ds);
@@ -2059,14 +2069,14 @@ select.swap-picker {
       }
       html += '<div class="card"><div class="plan-item">' +
         '<input class="name-input" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="name" value="' + esc(ex.name) + '" />' +
-        '<button class="swap-btn" data-swap-open="1" data-swap-scope="tpl" data-swap-key="' + tpl.id + '" data-swap-ex="' + ex.id + '" title="' + t("swapExerciseBtn") + '">&#8646;</button>' +
         '<div class="inputs">' +
         '<div><label>' + t("sets") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="sets" value="' + ex.sets + '" /></div>' +
         '<div><label>' + t("reps") + '</label><input type="number" inputmode="numeric" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="reps" value="' + ex.reps + '" /></div>' +
         '<div><label>' + t("wt") + '</label><input type="text" inputmode="decimal" class="dec-input" pattern="[0-9]*[.,]?[0-9]*" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '" data-plan-field="weight" value="' + ex.weight + '" /></div>' +
         "</div>" +
         '<button class="trash-btn" data-action="removeTplEx" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '">&#128465;</button>' +
-        "</div></div>";
+        "</div>" +
+        '<button class="swap-link" data-swap-open="1" data-swap-scope="tpl" data-swap-key="' + tpl.id + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button></div>";
     });
     return html;
   }
