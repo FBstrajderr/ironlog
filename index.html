@@ -1426,6 +1426,13 @@ select.swap-picker {
   function exercisesForDate(dateStr) {
     var a = state.assignments[dateStr];
     if (a && Array.isArray(a.exercises)) return a.exercises;
+    // Once workouts exist, a day with no assignment is simply unassigned
+    // (matches the "Rest day / Choose" dropdown default) -- it must NOT
+    // silently reuse the old fixed per-weekday plan, or a day you forgot to
+    // pick a workout for would quietly show last week's leftover exercises,
+    // let you log them, and then not count toward any workout in Progress
+    // (since there'd still be no real assignment/templateId behind it).
+    if (state.templates && state.templates.length) return [];
     return planFor(dowOf(dateStr));
   }
 
