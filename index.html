@@ -445,6 +445,12 @@ select.swap-picker {
   border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; min-height: 32px;
 }
 .rest-preset.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.metric-switch { display: flex; gap: 6px; margin: 10px 0; }
+.metric-btn {
+  flex: 1; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 20px; padding: 8px 10px; font-size: 12px; font-weight: 700; cursor: pointer; min-height: 34px;
+}
+.metric-btn.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
 </style>
 </head>
 <body>
@@ -1360,6 +1366,7 @@ select.swap-picker {
     newExLibId: "",
     newTplName: "",
     progressExKey: null,
+    progressMetric: "weight",
     selectedTemplateId: null,
     todayWeightInput: "",
     selectedDate: null,
@@ -1976,12 +1983,18 @@ select.swap-picker {
     return streak;
   }
 
-  function chartDataForKey(key) {
+  function metricValue(l, metric) {
+    if (metric === "reps") return l.reps;
+    if (metric === "sets") return l.sets;
+    return l.weight;
+  }
+  function chartDataForKey(key, metric) {
+    metric = metric || "weight";
     var cutoff = cutoff90();
     return state.logs
       .filter(function (l) { return logKey(l) === key && l.date >= cutoff && l.completed; })
       .sort(function (a, b) { return a.date > b.date ? 1 : -1; })
-      .map(function (l) { return { date: l.date, label: fmtDate(l.date), value: l.weight }; });
+      .map(function (l) { return { date: l.date, label: fmtDate(l.date), value: metricValue(l, metric) }; });
   }
   function weightChartData() {
     var cutoff = cutoff90();
@@ -1990,11 +2003,13 @@ select.swap-picker {
       .sort(function (a, b) { return a.date > b.date ? 1 : -1; })
       .map(function (w) { return { date: w.date, label: fmtDate(w.date), value: w.weight }; });
   }
-  function prForKey(key) {
+  function prForKey(key, metric) {
+    metric = metric || "weight";
     var cutoff = cutoff90(), best = null;
     state.logs.forEach(function (l) {
       if (logKey(l) === key && l.date >= cutoff && l.completed) {
-        if (best == null || l.weight > best) best = l.weight;
+        var v = metricValue(l, metric);
+        if (v != null && (best == null || v > best)) best = v;
       }
     });
     return best;
@@ -2091,7 +2106,8 @@ select.swap-picker {
   }
 
   // ---------- chart ----------
-  function lineChartSVG(data, color) {
+  function lineChartSVG(data, color, decimals) {
+    decimals = decimals == null ? 1 : decimals;
     var w = 600, h = 220, padL = 40, padR = 10, padT = 14, padB = 24;
     if (!data.length) return "";
     var values = data.map(function (d) { return d.value; });
@@ -2111,7 +2127,7 @@ select.swap-picker {
     }).join("");
     var yLab = [max, (max + min) / 2, min].map(function (v, i) {
       var y = padT + (h - padT - padB) * (i * 0.5);
-      return '<text x="2" y="' + (y + 4) + '" class="chart-axis-label">' + v.toFixed(1) + "</text>";
+      return '<text x="2" y="' + (y + 4) + '" class="chart-axis-label">' + v.toFixed(decimals) + "</text>";
     }).join("");
     var step = Math.max(1, Math.ceil(data.length / 6));
     var xLab = data.map(function (d, i) {
@@ -2545,8 +2561,10 @@ select.swap-picker {
     }
 
     var current = all.find(function (e) { return e.key === state.progressExKey; }) || all[0];
-    var data = chartDataForKey(current.key);
-    var pr = prForKey(current.key);
+    var metric = state.progressMetric || "weight";
+    var data = chartDataForKey(current.key, metric);
+    var pr = prForKey(current.key, metric);
+    var prUnit = metric === "weight" ? current.unit : "";
 
     html += '<div class="section-label">' + t("liftProgress") + "</div>";
     html += '<select class="ex-picker" id="progressPicker">';
@@ -2555,14 +2573,21 @@ select.swap-picker {
     });
     html += "</select>";
 
+    html += '<div class="metric-switch">' +
+      ["weight", "sets", "reps"].map(function (m) {
+        var label = m === "weight" ? t("weight") : (m === "sets" ? t("sets") : t("reps"));
+        return '<button class="metric-btn' + (metric === m ? " active" : "") + '" data-metric="' + m + '">' + label + "</button>";
+      }).join("") +
+      "</div>";
+
     html += '<div class="stat-row">' +
-      '<div class="stat"><div class="num">' + (pr != null ? pr + current.unit : "-") + '</div><div class="lbl">' + t("best90") + '</div></div>' +
+      '<div class="stat"><div class="num">' + (pr != null ? pr + prUnit : "-") + '</div><div class="lbl">' + t("best90") + '</div></div>' +
       '<div class="stat"><div class="num">' + data.length + '</div><div class="lbl">' + t("loggedSessions") + "</div></div></div>";
 
     html += '<div class="card chart-card">' +
       (data.length === 0
         ? '<div class="empty">' + t("noLogsFor90d") + "</div>"
-        : lineChartSVG(data, "#d9b84f")) + "</div>";
+        : lineChartSVG(data, "#d9b84f", metric === "weight" ? 1 : 0)) + "</div>";
     return html;
   }
 
@@ -3038,6 +3063,10 @@ select.swap-picker {
 
     var picker = document.getElementById("progressPicker");
     if (picker) picker.addEventListener("change", function () { state.progressExKey = picker.value; render(); });
+
+    app.querySelectorAll("[data-metric]").forEach(function (el) {
+      el.addEventListener("click", function () { state.progressMetric = el.getAttribute("data-metric"); render(); });
+    });
 
     function bind(id, key, rerender) {
       var el = document.getElementById(id);
