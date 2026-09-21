@@ -451,6 +451,9 @@ select.swap-picker {
   border-radius: 20px; padding: 8px 10px; font-size: 12px; font-weight: 700; cursor: pointer; min-height: 34px;
 }
 .metric-btn.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.week-override-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.week-override-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.week-override-row .metric-switch { margin: 0; }
 </style>
 </head>
 <body>
@@ -667,6 +670,7 @@ select.swap-picker {
       emptyWorkoutHint: "No exercises in this workout yet. Add one above.",
       chooseWorkoutPrompt: "Which workout are you doing?",
       weeklyGoalLabel: "Weekly Goal", timesPerWeekSuffix: "x / week", thisWeekLabel: "This Week",
+      countTowardWeekLabel: "Count toward week:", thisWeekOpt: "This week", lastWeekOpt: "Last week",
       changeWorkoutBtn: "Change workout",
       workoutForDayLabel: "Workout", restOrChoose: "😴 Rest day",
       newExerciseOption: "+ New exercise", newExerciseNameLabel: "New Exercise Name",
@@ -741,6 +745,7 @@ select.swap-picker {
       emptyWorkoutHint: "Jos nema vezbi u ovom treningu. Dodaj iznad.",
       chooseWorkoutPrompt: "Koji trening radis?",
       weeklyGoalLabel: "Nedeljni Cilj", timesPerWeekSuffix: "x / nedeljno", thisWeekLabel: "Ova Nedelja",
+      countTowardWeekLabel: "Broji za nedelju:", thisWeekOpt: "Ova nedelja", lastWeekOpt: "Prošla nedelja",
       changeWorkoutBtn: "Promeni Trening",
       workoutForDayLabel: "Trening", restOrChoose: "😴 Dan odmora",
       newExerciseOption: "+ Nova vezba", newExerciseNameLabel: "Naziv Nove Vezbe",
@@ -783,12 +788,18 @@ select.swap-picker {
   function fmtLongDate(d) {
     return dayNames()[d.getDay()] + ", " + monthLong()[d.getMonth()] + " " + d.getDate();
   }
-  function mondayOfThisWeek() {
-    var d = new Date();
+  function mondayOfWeekContaining(dateStr) {
+    var d = new Date(dateStr + "T00:00:00");
     var shift = (d.getDay() + 6) % 7;
     d.setDate(d.getDate() - shift);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+  function mondayOfThisWeek() { return mondayOfWeekContaining(todayStr()); }
+  function shiftDateKey(dateKey, days) {
+    var d = new Date(dateKey + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    return toKey(d);
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -1378,6 +1389,7 @@ select.swap-picker {
       return { seconds: secs, remaining: secs, running: false, endAt: null, justFinished: false };
     })(),
     workoutCountSince: load("ironlog_count_since", ""),
+    weekOverrides: load("ironlog_week_overrides", {}), // { dateStr: "YYYY-MM-DD" of the Monday it should count toward }
     cloud: {
       status: "off", // "off" | "ready" (becomes "ready" once signed in, if configured)
       name: load("ironlog_friend_name", ""),
@@ -1938,15 +1950,32 @@ select.swap-picker {
 
   function weeklyGoal() { return parseInt2(state.profile.weeklyGoal) || 0; }
 
-  function weekTrainedCount(weekMonDate) {
-    var count = 0, t = todayStr();
-    for (var i = 0; i < 7; i++) {
-      var d = new Date(weekMonDate);
-      d.setDate(weekMonDate.getDate() + i);
-      var ds = toKey(d);
-      if (ds > t) continue;
-      if (state.logs.some(function (l) { return l.date === ds && l.completed; })) count++;
+  // A trained day normally counts toward the week it actually falls in, but
+  // can be manually shifted (see setWeekOverride) so an extra session done
+  // this week can instead cover a week that was missed.
+  function effectiveWeekKey(ds) {
+    if (state.weekOverrides && state.weekOverrides[ds]) return state.weekOverrides[ds];
+    return toKey(mondayOfWeekContaining(ds));
+  }
+  function persistWeekOverrides() { if (!save("ironlog_week_overrides", state.weekOverrides)) state.saveError = true; }
+  function setWeekOverride(ds, targetMonKey) {
+    var naturalKey = toKey(mondayOfWeekContaining(ds));
+    if (targetMonKey === naturalKey) {
+      if (state.weekOverrides && state.weekOverrides[ds]) delete state.weekOverrides[ds];
+    } else {
+      state.weekOverrides[ds] = targetMonKey;
     }
+    persistWeekOverrides();
+    render();
+  }
+
+  function weekTrainedCount(weekMonDate) {
+    var t = todayStr(), weekKey = toKey(weekMonDate);
+    var counted = {}, count = 0;
+    state.logs.forEach(function (l) {
+      if (!l.completed || l.date > t || counted[l.date]) return;
+      if (effectiveWeekKey(l.date) === weekKey) { counted[l.date] = true; count++; }
+    });
     return count;
   }
   function thisWeekTrainedCount() { return weekTrainedCount(mondayOfThisWeek()); }
@@ -2269,6 +2298,18 @@ select.swap-picker {
         (bw ? "<span>" + t("bodyWeight") + " <b>" + bw.weight + state.profile.weightUnit +
           '</b> &nbsp;<a href="#" class="del-weight-link" data-wdate="' + ds + '">' + t("remove") + "</a></span>" : "") +
         "</div>";
+    }
+
+    if (doneLogs.length && weeklyGoal()) {
+      var naturalMon = toKey(mondayOfWeekContaining(ds));
+      var prevMon = shiftDateKey(naturalMon, -7);
+      var current = effectiveWeekKey(ds);
+      html += '<div class="week-override-row">' +
+        '<span class="week-override-label">' + t("countTowardWeekLabel") + "</span>" +
+        '<div class="metric-switch">' +
+        '<button class="metric-btn' + (current === naturalMon ? " active" : "") + '" data-week-override="' + ds + '" data-week-target="' + naturalMon + '">' + t("thisWeekOpt") + "</button>" +
+        '<button class="metric-btn' + (current === prevMon ? " active" : "") + '" data-week-override="' + ds + '" data-week-target="' + prevMon + '">' + t("lastWeekOpt") + "</button>" +
+        "</div></div>";
     }
 
     html += "</div>";
@@ -3066,6 +3107,12 @@ select.swap-picker {
 
     app.querySelectorAll("[data-metric]").forEach(function (el) {
       el.addEventListener("click", function () { state.progressMetric = el.getAttribute("data-metric"); render(); });
+    });
+
+    app.querySelectorAll("[data-week-override]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        setWeekOverride(el.getAttribute("data-week-override"), el.getAttribute("data-week-target"));
+      });
     });
 
     function bind(id, key, rerender) {
