@@ -223,6 +223,7 @@ select.ex-picker {
 .mark.full { background: var(--gold); color: var(--bg); }
 .mark.partial { border: 2px solid var(--gold); color: var(--gold); font-size: 9px; }
 .mark.missed { border: 2px solid var(--accent); color: var(--accent); font-size: 10px; }
+.mark.sport { background: var(--violet); color: var(--bg); font-size: 9px; }
 .mark.rest { border: 1px dashed var(--border); color: var(--text-muted); font-size: 13px; }
 .mark.upcoming { border: 1px solid var(--border); background: var(--panel-2); }
 .legend {
@@ -235,6 +236,7 @@ select.ex-picker {
 .legend .dot.full { background: var(--gold); }
 .legend .dot.partial { border: 2px solid var(--gold); }
 .legend .dot.missed { border: 2px solid var(--accent); }
+.legend .dot.sport { background: var(--violet); }
 .legend .dot.rest { border: 1px dashed var(--border); }
 
 /* ---- consistency grid ---- */
@@ -298,6 +300,7 @@ select.ex-picker {
 .cellbox.full { background: var(--gold); }
 .cellbox.partial { background: rgba(217,184,79,0.42); }
 .cellbox.missed { background: rgba(209,67,90,0.32); }
+.cellbox.sport { background: var(--violet); }
 .cellbox.rest { background: var(--panel-2); }
 .cellbox.upcoming { background: transparent; border: 1px dashed var(--border); }
 .nag-bar {
@@ -655,6 +658,7 @@ select.swap-picker {
       backupNote: "Your data lives on this device only. Save a backup now and then, and after you get a new phone restore it here.",
       language: "Language",
       trainedTxt: "Trained", partlyDone: "Partly done", missedTxt: "Missed", restDayTxt: "Rest day",
+      sportDoneTxt: "Sport session (not counted toward gym goal)",
       scheduledTxt: "Scheduled", inProgressTxt: "In progress",
       nothingScheduled: "Nothing was scheduled for this day.",
       scheduledForDay: "Scheduled for this day:", wasScheduled: "Nothing logged. This was scheduled:",
@@ -673,6 +677,8 @@ select.swap-picker {
       countTowardWeekLabel: "Count toward week:", thisWeekOpt: "This week", lastWeekOpt: "Last week",
       changeWorkoutBtn: "Change workout",
       workoutForDayLabel: "Workout", restOrChoose: "😴 Rest day",
+      sportOption: "🏀 Sport", sportLabel: "Sport", sportPlaceholder: "e.g. Basketball",
+      durationLabel: "Duration (min)", sportTraining: "Training", sportMatch: "Match",
       newExerciseOption: "+ New exercise", newExerciseNameLabel: "New Exercise Name",
       tabFriends: "Friends",
       friendsNotConfigured: "This feature isn't set up yet. Ask whoever maintains the app to add the shared database (see README.md) -- then everyone will see this automatically, no update needed on your end.",
@@ -730,6 +736,7 @@ select.swap-picker {
       backupNote: "Tvoji podaci postoje samo na ovom uredjaju. Sacuvaj rezervnu kopiju s vremena na vreme, a kad dobijes novi telefon, vrati je ovde.",
       language: "Jezik",
       trainedTxt: "Trenirano", partlyDone: "Delimicno uradjeno", missedTxt: "Preskoceno", restDayTxt: "Dan odmora",
+      sportDoneTxt: "Sport (ne racuna se u cilj za teretanu)",
       scheduledTxt: "Planirano", inProgressTxt: "U toku",
       nothingScheduled: "Nista nije bilo planirano za ovaj dan.",
       scheduledForDay: "Planirano za ovaj dan:", wasScheduled: "Nista nije uneto. Ovo je bilo planirano:",
@@ -748,6 +755,8 @@ select.swap-picker {
       countTowardWeekLabel: "Broji za nedelju:", thisWeekOpt: "Ova nedelja", lastWeekOpt: "Prošla nedelja",
       changeWorkoutBtn: "Promeni Trening",
       workoutForDayLabel: "Trening", restOrChoose: "😴 Dan odmora",
+      sportOption: "🏀 Sport", sportLabel: "Sport", sportPlaceholder: "npr. Kosarka",
+      durationLabel: "Trajanje (min)", sportTraining: "Termin", sportMatch: "Utakmica",
       newExerciseOption: "+ Nova vezba", newExerciseNameLabel: "Naziv Nove Vezbe",
       tabFriends: "Drugari",
       friendsNotConfigured: "Ova opcija jos nije podesena. Zamoli onoga ko odrzava app da doda zajednicku bazu (pogledaj README.md) -- onda ce svi ovo automatski videti, bez potrebe da ti nesto azuriras.",
@@ -1369,6 +1378,7 @@ select.swap-picker {
     templates: load("ironlog_templates", []),
     assignments: load("ironlog_assignments", {}),
     library: load("ironlog_exercises", []),
+    sportsLibrary: load("ironlog_sports", []),
     reminders: normalizeReminders(load("ironlog_reminders", null)),
     lang: load("ironlog_lang", "en"),
     tab: "today",
@@ -1425,6 +1435,7 @@ select.swap-picker {
   // to the old weekday-based plan so their history keeps showing correctly.
   function exercisesForDate(dateStr) {
     var a = state.assignments[dateStr];
+    if (a && a.kind === "sport") return [];
     if (a && Array.isArray(a.exercises)) return a.exercises;
     // Once workouts exist, a day with no assignment is simply unassigned
     // (matches the "Rest day / Choose" dropdown default) -- it must NOT
@@ -1504,6 +1515,21 @@ select.swap-picker {
     persistLibrary();
   }
 
+  function sportLibraryEntry(id) { return state.sportsLibrary.find(function (se) { return se.id === id; }); }
+
+  // Same idea as addToLibraryIfNew, but for the sports list: adds a name
+  // (e.g. "Kosarka") if it isn't already there case-insensitively, so
+  // picking a sport works exactly like picking an exercise -- typing an
+  // existing one just reuses it instead of creating a near-duplicate.
+  function addSportToLibraryIfNew(name) {
+    var key = name.trim().toLowerCase();
+    if (!key) return;
+    var exists = state.sportsLibrary.some(function (se) { return se.name.trim().toLowerCase() === key; });
+    if (exists) return;
+    state.sportsLibrary.push({ id: uid(), name: name.trim() });
+    persistSportsLibrary();
+  }
+
   function getDateInputs(dateStr) {
     if (!state.dateInputs[dateStr]) refreshDateInputs(dateStr);
     return state.dateInputs[dateStr];
@@ -1541,6 +1567,7 @@ select.swap-picker {
   function persistTemplates() { if (!save("ironlog_templates", state.templates)) state.saveError = true; }
   function persistAssignments() { if (!save("ironlog_assignments", state.assignments)) state.saveError = true; }
   function persistLibrary() { if (!save("ironlog_exercises", state.library)) state.saveError = true; }
+  function persistSportsLibrary() { if (!save("ironlog_sports", state.sportsLibrary)) state.saveError = true; }
   function persistReminders() {
     if (!save("ironlog_reminders", state.reminders)) state.saveError = true;
     pushConfigToSW();
@@ -1627,7 +1654,7 @@ select.swap-picker {
       return ex ? { obj: ex, ownerType: "tpl", dateEx: null } : null;
     }
     var a = state.assignments[key];
-    var dateEx = a ? a.exercises.find(function (e) { return e.id === exId; }) : null;
+    var dateEx = (a && Array.isArray(a.exercises)) ? a.exercises.find(function (e) { return e.id === exId; }) : null;
     if (!dateEx) return null;
     if (dateEx.srcExId && a.templateId) {
       var tpl2 = templateById(a.templateId);
@@ -1745,7 +1772,7 @@ select.swap-picker {
   // workout it came from, so Workouts stays in sync too.
   function moveDateExercise(dateStr, exId, dir) {
     var a = state.assignments[dateStr];
-    if (!a) return;
+    if (!a || !Array.isArray(a.exercises)) return;
     var idx = a.exercises.findIndex(function (e) { return e.id === exId; });
     if (idx < 0 || !moveArrayItem(a.exercises, idx, dir)) return;
     persistAssignments();
@@ -1803,7 +1830,7 @@ select.swap-picker {
     var exs = tpl.exercises.map(function (e) {
       return { id: uid(), srcExId: e.id, name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, unit: e.unit };
     });
-    state.assignments[dateStr] = { templateId: tpl.id, templateName: tpl.name, exercises: exs };
+    state.assignments[dateStr] = { kind: "gym", templateId: tpl.id, templateName: tpl.name, exercises: exs };
     persistAssignments();
     refreshDateInputs(dateStr);
   }
@@ -1813,9 +1840,33 @@ select.swap-picker {
   // before workouts existed, which used to make a rest day quietly show
   // yesterday's exercises again and count as "missed".
   function clearAssignment(dateStr) {
-    state.assignments[dateStr] = { templateId: null, templateName: "", exercises: [] };
+    state.assignments[dateStr] = { kind: "gym", templateId: null, templateName: "", exercises: [] };
     persistAssignments();
     refreshDateInputs(dateStr);
+  }
+  // A day can be a gym workout OR a sport session (a match/practice you went
+  // to instead of the gym) -- picking "Sport" from the same day picker sets
+  // this instead of a template. Re-picking "Sport" on a day that already has
+  // one keeps the duration/type you'd already set rather than resetting it.
+  function assignSportToDate(dateStr, sportName) {
+    var prev = state.assignments[dateStr];
+    var prevSport = (prev && prev.kind === "sport") ? prev.sport : null;
+    state.assignments[dateStr] = {
+      kind: "sport",
+      sport: {
+        name: sportName || "",
+        duration: prevSport ? prevSport.duration : 60,
+        matchType: prevSport ? prevSport.matchType : "training"
+      }
+    };
+    persistAssignments();
+  }
+  function setSportMatchType(dateStr, matchType) {
+    var a = state.assignments[dateStr];
+    if (!a || a.kind !== "sport") return;
+    a.sport.matchType = matchType;
+    persistAssignments();
+    render();
   }
   // Whenever weight/sets/reps are logged against a workout that came from a
   // saved template, write those numbers back onto the template too, so the
@@ -1902,6 +1953,14 @@ select.swap-picker {
 
   function dayStatus(dateStr) {
     var t = todayStr();
+    var a = state.assignments[dateStr];
+    // A sport session gets its own status, distinct from a gym "full" day --
+    // it shows up (instead of looking like an untouched rest day) but stays
+    // out of the gym-only tracking (weekly goal, adherence, days trained),
+    // per Deni's ask: sport shouldn't count toward "3x in the gym this week".
+    if (a && a.kind === "sport" && a.sport && a.sport.name) {
+      return dateStr > t ? "upcoming" : "sport";
+    }
     var planned = exercisesForDate(dateStr).length;
     var done = state.logs.filter(function (l) { return l.date === dateStr && l.completed; }).length;
     if (dateStr > t) return planned > 0 ? "upcoming" : "rest";
@@ -1946,13 +2005,21 @@ select.swap-picker {
     return out;
   }
 
+  // Every date that counts as "trained" for streak/week/adherence math --
+  // either a completed gym log, or a sport session marked for that day.
+  function trainedDateKeys() {
+    // Gym only, on purpose: sport sessions get their own "sport" day status
+    // (so they show up instead of looking like a rest day) but must stay out
+    // of the gym-only tracking -- weekly goal, adherence, days trained --
+    // so "3x in the gym this week" only ever counts actual gym sessions.
+    var set = {};
+    state.logs.forEach(function (l) { if (l.completed) set[l.date] = true; });
+    return Object.keys(set);
+  }
+
   function trainedDays90() {
     var cutoff = cutoff90();
-    var set = {};
-    state.logs.forEach(function (l) {
-      if (l.date >= cutoff && l.completed) set[l.date] = true;
-    });
-    return Object.keys(set).length;
+    return trainedDateKeys().filter(function (ds) { return ds >= cutoff; }).length;
   }
 
   function weeklyGoal() { return parseInt2(state.profile.weeklyGoal) || 0; }
@@ -1977,11 +2044,10 @@ select.swap-picker {
   }
 
   function weekTrainedCount(weekMonDate) {
-    var t = todayStr(), weekKey = toKey(weekMonDate);
-    var counted = {}, count = 0;
-    state.logs.forEach(function (l) {
-      if (!l.completed || l.date > t || counted[l.date]) return;
-      if (effectiveWeekKey(l.date) === weekKey) { counted[l.date] = true; count++; }
+    var t = todayStr(), weekKey = toKey(weekMonDate), count = 0;
+    trainedDateKeys().forEach(function (ds) {
+      if (ds > t) return;
+      if (effectiveWeekKey(ds) === weekKey) count++;
     });
     return count;
   }
@@ -2014,7 +2080,7 @@ select.swap-picker {
       if (i === 0 && (st === "missed" || st === "upcoming")) continue; // today still open
       if (st === "missed") break;
       if (st === "full" || st === "partial") streak++;
-      else if (st === "rest") continue;
+      else if (st === "rest" || st === "sport") continue; // neutral: neither breaks nor builds the gym streak
     }
     return streak;
   }
@@ -2138,7 +2204,9 @@ select.swap-picker {
   }
   function labelForDate(dateStr, dow) {
     var a = state.assignments[dateStr];
-    return a ? dayNames()[dow] + " \u00b7 " + (a.templateName || t("rest")) : dayNames()[dow];
+    if (!a) return dayNames()[dow];
+    var label = a.kind === "sport" ? (a.sport && a.sport.name ? a.sport.name : t("sportLabel")) : (a.templateName || t("rest"));
+    return dayNames()[dow] + " \u00b7 " + label;
   }
 
   // ---------- chart ----------
@@ -2185,6 +2253,7 @@ select.swap-picker {
     if (st === "full") return "&#10003;";
     if (st === "partial") return "&#189;";
     if (st === "missed") return "&#10005;";
+    if (st === "sport") return "&#9679;";
     if (st === "rest") return "&middot;";
     return "";
   }
@@ -2205,6 +2274,7 @@ select.swap-picker {
       '<span><i class="dot full"></i>' + t("trained") + '</span>' +
       '<span><i class="dot partial"></i>' + t("partial") + '</span>' +
       '<span><i class="dot missed"></i>' + t("missed") + '</span>' +
+      '<span><i class="dot sport"></i>' + t("sportLabel") + '</span>' +
       '<span><i class="dot rest"></i>' + t("rest") + "</span></div>";
     return html;
   }
@@ -2218,27 +2288,31 @@ select.swap-picker {
     var isFuture = dateStr > todayD;
     var exs = exercisesForDate(dateStr);
     var html = "";
+    var a = state.assignments[dateStr];
+    var isSport = a && a.kind === "sport";
 
     if (isFuture) {
+      if (isSport) return "";
       return exs.length ? "" : '<div class="empty">' + t("nothingScheduled") + "</div>";
     }
 
-    // Always-visible workout picker: switching it any time replaces today's
-    // (or that day's) exercises with a fresh copy of the chosen workout. If
-    // every saved workout has since been deleted, skip the picker but still
-    // show whatever was already logged/assigned for this date.
-    if (state.templates.length) {
-      var curTplId = state.assignments[dateStr] ? state.assignments[dateStr].templateId : "";
-      html += '<div class="section-label" style="margin-top:0">' + t("workoutForDayLabel") + "</div>";
-      html += '<select class="ex-picker" data-workout-select="' + dateStr + '">' +
-        '<option value="">' + t("restOrChoose") + "</option>";
-      state.templates.forEach(function (tp) {
-        html += '<option value="' + tp.id + '"' + (tp.id === curTplId ? " selected" : "") + ">" +
-          esc(tp.name) + " (" + tp.exercises.length + ")</option>";
-      });
-      html += "</select>";
-    } else if (exs.length === 0) {
-      return '<div class="empty">' + t("noTemplatesYet") + "</div>";
+    // Always-visible day-type picker: switching it any time replaces today's
+    // (or that day's) plan with a fresh copy of the chosen workout, or with
+    // an empty sport entry to fill in. Sport is always offered even with no
+    // saved gym workouts yet.
+    var curVal = isSport ? "__sport__" : (a ? (a.templateId || "") : "");
+    html += '<div class="section-label" style="margin-top:0">' + t("workoutForDayLabel") + "</div>";
+    html += '<select class="ex-picker" data-workout-select="' + dateStr + '">' +
+      '<option value="">' + t("restOrChoose") + "</option>" +
+      '<option value="__sport__"' + (curVal === "__sport__" ? " selected" : "") + ">" + t("sportOption") + "</option>";
+    state.templates.forEach(function (tp) {
+      html += '<option value="' + tp.id + '"' + (tp.id === curVal ? " selected" : "") + ">" +
+        esc(tp.name) + " (" + tp.exercises.length + ")</option>";
+    });
+    html += "</select>";
+
+    if (isSport) {
+      return html + renderSportEditor(dateStr, a.sport);
     }
 
     if (exs.length === 0) return html;
@@ -2270,15 +2344,40 @@ select.swap-picker {
     return html;
   }
 
+  // The sport-day sub-form: which sport, how long, and whether it was a
+  // practice session or a match -- shown instead of the gym checklist once
+  // "Sport" is picked for that day.
+  function renderSportEditor(dateStr, sport) {
+    sport = sport || { name: "", duration: 60, matchType: "training" };
+    var html = '<div class="card">';
+    html += '<div class="section-label" style="margin-top:0">' + t("sportLabel") + "</div>";
+    html += '<div class="ac-wrap"><input class="sport-name-input" autocomplete="off" data-sdate="' + dateStr +
+      '" placeholder="' + t("sportPlaceholder") + '" value="' + esc(sport.name || "") + '" />' +
+      '<div class="ac-list" id="sportNameAC"></div></div>';
+    html += '<div class="add-form" style="margin-top:12px">' +
+      '<div class="field num"><label>' + t("durationLabel") + '</label>' +
+      '<input type="number" step="5" min="0" inputmode="numeric" data-sport-field="duration" data-sdate="' + dateStr +
+      '" value="' + (sport.duration != null ? sport.duration : 60) + '" /></div>' +
+      "</div>";
+    html += '<div class="metric-switch" style="margin-top:12px">' +
+      '<button class="metric-btn' + (sport.matchType !== "match" ? " active" : "") + '" data-sport-type="training" data-sdate="' + dateStr + '">' + t("sportTraining") + "</button>" +
+      '<button class="metric-btn' + (sport.matchType === "match" ? " active" : "") + '" data-sport-type="match" data-sdate="' + dateStr + '">' + t("sportMatch") + "</button>" +
+      "</div>";
+    html += "</div>";
+    return html;
+  }
+
   function dayDetailHTML(ds) {
     if (!ds) return "";
     var todayD = todayStr();
     var st = dayStatus(ds);
-    var label = state.assignments[ds] ? state.assignments[ds].templateName : "";
+    var a0 = state.assignments[ds];
+    var isSport0 = a0 && a0.kind === "sport";
+    var label = isSport0 ? (a0.sport && a0.sport.name ? a0.sport.name : t("sportLabel")) : (a0 ? a0.templateName : "");
     var when = fmtLongDate(new Date(ds + "T00:00:00"));
 
     var statusText = {
-      full: t("trainedTxt"), partial: t("partlyDone"), missed: t("missedTxt"),
+      full: t("trainedTxt"), partial: t("partlyDone"), missed: t("missedTxt"), sport: t("sportDoneTxt"),
       rest: t("restDayTxt"), upcoming: t("scheduledTxt")
     }[st];
     if (ds === todayD && st === "upcoming") statusText = t("inProgressTxt");
@@ -2419,7 +2518,9 @@ select.swap-picker {
   function renderToday() {
     var ds = todayStr(), dow = todayDow();
     var a = state.assignments[ds];
-    var bannerLabel = a ? (a.templateName || t("rest")) : dayNames()[dow];
+    var bannerLabel = a
+      ? (a.kind === "sport" ? (a.sport && a.sport.name ? a.sport.name : t("sportLabel")) : (a.templateName || t("rest")))
+      : dayNames()[dow];
     var html = "";
     if (workoutPending()) {
       html += '<div class="nag-bar"><div class="msg">' + esc(currentMessage()) + "</div>" +
@@ -2598,6 +2699,7 @@ select.swap-picker {
       '<span><i class="dot full"></i>' + t("trained") + '</span>' +
       '<span><i class="dot partial"></i>' + t("partial") + '</span>' +
       '<span><i class="dot missed"></i>' + t("missed") + '</span>' +
+      '<span><i class="dot sport"></i>' + t("sportLabel") + '</span>' +
       '<span><i class="dot rest"></i>' + t("rest") + '</span></div>' +
       '<div class="hint">' + t("tapSquare") + "</div></div>";
 
@@ -2850,12 +2952,14 @@ select.swap-picker {
   // typing or closes the keyboard; onPick only fires on an explicit tap or
   // on leaving the field with an exact (case-insensitive) name match, and
   // that is the one moment a full render() happens, on purpose.
-  function setupExerciseAutocomplete(inputEl, listEl, onPick) {
+  function setupExerciseAutocomplete(inputEl, listEl, onPick, items, getById) {
     if (!inputEl || !listEl) return;
+    items = items || state.library;
+    getById = getById || libraryEntry;
     function matches() {
       var q = inputEl.value.trim().toLowerCase();
       if (!q) return [];
-      return state.library.filter(function (le) { return le.name.toLowerCase().indexOf(q) !== -1; })
+      return items.filter(function (le) { return le.name.toLowerCase().indexOf(q) !== -1; })
         .sort(function (a, b) { return a.name.localeCompare(b.name); })
         .slice(0, 6);
     }
@@ -2874,7 +2978,7 @@ select.swap-picker {
       var item = ev.target.closest(".ac-item");
       if (!item) return;
       ev.preventDefault();
-      var le = libraryEntry(item.getAttribute("data-ac-id"));
+      var le = getById(item.getAttribute("data-ac-id"));
       hide();
       // Blurring here on purpose, before onPick: tapping this item is about
       // to move focus off the field one way or another, which fires the
@@ -2889,7 +2993,7 @@ select.swap-picker {
     });
     inputEl.addEventListener("blur", function () {
       var q = inputEl.value.trim().toLowerCase();
-      var exact = q && state.library.find(function (le) { return le.name.trim().toLowerCase() === q; });
+      var exact = q && items.find(function (le) { return le.name.trim().toLowerCase() === q; });
       hide();
       if (exact) onPick(exact);
     });
@@ -2937,9 +3041,57 @@ select.swap-picker {
     app.querySelectorAll("[data-workout-select]").forEach(function (el) {
       el.addEventListener("change", function () {
         var ds = el.getAttribute("data-workout-select");
-        if (el.value) assignTemplateToDate(ds, el.value);
+        if (el.value === "__sport__") assignSportToDate(ds, "");
+        else if (el.value) assignTemplateToDate(ds, el.value);
         else clearAssignment(ds);
         render();
+      });
+    });
+    app.querySelectorAll(".sport-name-input").forEach(function (el) {
+      var sds = el.getAttribute("data-sdate");
+      var commit = function () {
+        if (!el.isConnected) return;
+        var a = state.assignments[sds];
+        if (!a || a.kind !== "sport") return;
+        a.sport.name = el.value;
+        persistAssignments();
+      };
+      el.addEventListener("input", commit);
+      el.addEventListener("change", commit);
+      // Deferred on purpose: a suggestion click forces this same field to
+      // blur (see setupExerciseAutocomplete) BEFORE its onPick corrects the
+      // name, so reading el.value here would still see the stale half-typed
+      // text. Waiting one tick lets onPick's write land first, then this
+      // reads the final committed name straight from state -- same fix
+      // shape as the reentrant-blur bug found in the exercise autocomplete.
+      el.addEventListener("blur", function () {
+        setTimeout(function () {
+          var a = state.assignments[sds];
+          var name = (a && a.kind === "sport" && a.sport && a.sport.name || "").trim();
+          if (name) addSportToLibraryIfNew(name);
+        }, 0);
+      });
+      setupExerciseAutocomplete(el, document.getElementById("sportNameAC"), function (se) {
+        var a = state.assignments[sds];
+        if (a && a.kind === "sport") { a.sport.name = se.name; persistAssignments(); }
+        render();
+      }, state.sportsLibrary, sportLibraryEntry);
+    });
+    app.querySelectorAll("[data-sport-field]").forEach(function (el) {
+      var h = function () {
+        if (!el.isConnected) return;
+        var ds = el.getAttribute("data-sdate");
+        var a = state.assignments[ds];
+        if (!a || a.kind !== "sport") return;
+        a.sport[el.getAttribute("data-sport-field")] = parseInt2(el.value) || 0;
+        persistAssignments();
+      };
+      el.addEventListener("input", h);
+      el.addEventListener("change", h);
+    });
+    app.querySelectorAll("[data-sport-type]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        setSportMatchType(el.getAttribute("data-sdate"), el.getAttribute("data-sport-type"));
       });
     });
     app.querySelectorAll('[data-action="toggleDate"]').forEach(function (el) {
