@@ -126,6 +126,7 @@ h1 .accent { color: var(--gold); }
 }
 .field.name input { width: 150px; }
 .field.num input, .field.num select { width: 68px; }
+.field.date input { width: 150px; }
 .add-btn {
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
   border: none; color: var(--bg); font-weight: 800;
@@ -661,7 +662,9 @@ select.swap-picker {
       restTimerLabel: "Rest Timer", restStartBtn: "Start", restPauseBtn: "Pause", restResetBtn: "Reset",
       restDoneMsg: "Rest is over. Go!",
       moveUpLabel: "Move up", moveDownLabel: "Move down",
-      restBgHint: "Keeps running if you switch apps or lock the screen -- allow notifications and you'll get one the moment rest is over."
+      restBgHint: "Keeps running if you switch apps or lock the screen -- allow notifications and you'll get one the moment rest is over.",
+      workoutCountsLabel: "Times Completed", timesSuffix: "x", deletedWorkoutTag: "deleted",
+      countSinceLabel: "Count since", clearCountSince: "All time"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -733,7 +736,9 @@ select.swap-picker {
       restTimerLabel: "Tajmer za Odmor", restStartBtn: "Kreni", restPauseBtn: "Pauza", restResetBtn: "Restartuj",
       restDoneMsg: "Odmor je gotov. Kreni!",
       moveUpLabel: "Pomeri gore", moveDownLabel: "Pomeri dole",
-      restBgHint: "Radi i kad predjes u drugu app ili zakljucas ekran -- dozvoli notifikacije pa ces dobiti poruku cim odmor prodje."
+      restBgHint: "Radi i kad predjes u drugu app ili zakljucas ekran -- dozvoli notifikacije pa ces dobiti poruku cim odmor prodje.",
+      workoutCountsLabel: "Koliko Puta Uradjeno", timesSuffix: "x", deletedWorkoutTag: "obrisan",
+      countSinceLabel: "Broji od", clearCountSince: "Sve vreme"
     }
   };
   function t(key) {
@@ -1351,6 +1356,7 @@ select.swap-picker {
       var secs = parseInt2(load("ironlog_rest_seconds", 90)) || 90;
       return { seconds: secs, remaining: secs, running: false, endAt: null, justFinished: false };
     })(),
+    workoutCountSince: load("ironlog_count_since", ""),
     cloud: {
       status: "off", // "off" | "ready" (becomes "ready" once signed in, if configured)
       name: load("ironlog_friend_name", ""),
@@ -1863,6 +1869,32 @@ select.swap-picker {
     return dateStr === t ? "upcoming" : "missed";
   }
 
+  // How many times each workout has actually been completed -- a day only
+  // counts if it was assigned from that workout AND fully done (same "full"
+  // status the consistency grid and week badges already use, so the number
+  // here always agrees with the gold squares elsewhere in the app). An
+  // optional cutoff date excludes anything before it, for counting only
+  // "since I started this routine" rather than the whole history.
+  function computeWorkoutCounts(sinceDate) {
+    var counts = {}, today = todayStr();
+    Object.keys(state.assignments).forEach(function (ds) {
+      if (sinceDate && ds < sinceDate) return;
+      if (ds > today) return;
+      var a = state.assignments[ds];
+      if (!a || !a.templateId) return;
+      if (dayStatus(ds) !== "full") return;
+      if (!counts[a.templateId]) counts[a.templateId] = { name: a.templateName || "?", count: 0 };
+      counts[a.templateId].count++;
+    });
+    return counts;
+  }
+  function persistWorkoutCountSince() { if (!save("ironlog_count_since", state.workoutCountSince)) state.saveError = true; }
+  function setWorkoutCountSince(val) {
+    state.workoutCountSince = (val || "").trim();
+    persistWorkoutCountSince();
+    render();
+  }
+
   function thisWeekDates() {
     var mon = mondayOfThisWeek(), out = [];
     for (var i = 0; i < 7; i++) {
@@ -2351,6 +2383,32 @@ select.swap-picker {
     return html;
   }
 
+  // A quick-glance count of how many times each saved workout has actually
+  // been completed, with an optional "count since" date so old/junk history
+  // (or a routine switch) doesn't have to muddy the numbers.
+  function renderWorkoutCountsCard() {
+    if (!state.templates.length) return "";
+    var counts = computeWorkoutCounts(state.workoutCountSince || null);
+    var html = '<div class="card"><div class="section-label" style="margin-top:0">' + t("workoutCountsLabel") + "</div>";
+    state.templates.forEach(function (tp) {
+      var c = counts[tp.id] ? counts[tp.id].count : 0;
+      html += '<div class="lb-row"><span class="lb-name">' + esc(tp.name) + "</span>" +
+        '<span class="lb-value">' + c + t("timesSuffix") + "</span></div>";
+    });
+    Object.keys(counts).forEach(function (id) {
+      if (templateById(id)) return; // already listed above
+      html += '<div class="lb-row"><span class="lb-name">' + esc(counts[id].name) +
+        ' <span class="lb-you">(' + t("deletedWorkoutTag") + ")</span></span>" +
+        '<span class="lb-value">' + counts[id].count + t("timesSuffix") + "</span></div>";
+    });
+    html += '<div class="add-form" style="margin-top:12px">' +
+      '<div class="field date"><label>' + t("countSinceLabel") + '</label>' +
+      '<input type="date" id="countSinceInput" value="' + esc(state.workoutCountSince || "") + '" /></div>' +
+      (state.workoutCountSince ? '<button class="ghost-btn" id="clearCountSinceBtn">' + t("clearCountSince") + "</button>" : "") +
+      "</div></div>";
+    return html;
+  }
+
   function renderPlan() {
     var html = '<div class="day-pills">';
     state.templates.forEach(function (tp) {
@@ -2359,6 +2417,8 @@ select.swap-picker {
         '<span class="pill-count">' + tp.exercises.length + "</span></button>";
     });
     html += "</div>";
+
+    html += renderWorkoutCountsCard();
 
     html += '<div class="card"><div class="add-form">' +
       '<div class="field name"><label>' + t("newWorkoutLabel") + '</label><input id="newTplName" placeholder="' + t("workoutNamePlaceholder") + '" value="' + esc(state.newTplName) + '" /></div>' +
@@ -2776,6 +2836,11 @@ select.swap-picker {
     if (newTplNameEl) newTplNameEl.addEventListener("input", function () { state.newTplName = newTplNameEl.value; });
     var addTplBtn = document.getElementById("addTplBtn");
     if (addTplBtn) addTplBtn.addEventListener("click", addTemplate);
+
+    var countSinceInput = document.getElementById("countSinceInput");
+    if (countSinceInput) countSinceInput.addEventListener("change", function () { setWorkoutCountSince(countSinceInput.value); });
+    var clearCountSinceBtn = document.getElementById("clearCountSinceBtn");
+    if (clearCountSinceBtn) clearCountSinceBtn.addEventListener("click", function () { setWorkoutCountSince(""); });
 
     var tplNameInput = document.getElementById("tplNameInput");
     if (tplNameInput) {
