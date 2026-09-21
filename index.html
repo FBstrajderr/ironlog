@@ -660,7 +660,8 @@ select.swap-picker {
       swapExerciseBtn: "Swap exercise", cancelBtn: "Cancel", addAlternateOption: "+ Add different exercise",
       restTimerLabel: "Rest Timer", restStartBtn: "Start", restPauseBtn: "Pause", restResetBtn: "Reset",
       restDoneMsg: "Rest is over. Go!",
-      moveUpLabel: "Move up", moveDownLabel: "Move down"
+      moveUpLabel: "Move up", moveDownLabel: "Move down",
+      restBgHint: "Keeps running if you switch apps or lock the screen -- allow notifications and you'll get one the moment rest is over."
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -731,7 +732,8 @@ select.swap-picker {
       swapExerciseBtn: "Zameni vezbu", cancelBtn: "Otkazi", addAlternateOption: "+ Dodaj drugu vezbu",
       restTimerLabel: "Tajmer za Odmor", restStartBtn: "Kreni", restPauseBtn: "Pauza", restResetBtn: "Restartuj",
       restDoneMsg: "Odmor je gotov. Kreni!",
-      moveUpLabel: "Pomeri gore", moveDownLabel: "Pomeri dole"
+      moveUpLabel: "Pomeri gore", moveDownLabel: "Pomeri dole",
+      restBgHint: "Radi i kad predjes u drugu app ili zakljucas ekran -- dozvoli notifikacije pa ces dobiti poruku cim odmor prodje."
     }
   };
   function t(key) {
@@ -986,6 +988,29 @@ select.swap-picker {
     var m = Math.floor(total / 60), s = total % 60;
     return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
   }
+  // Patches just the timer's own DOM nodes instead of calling the full
+  // render() -- render() replaces the whole tab's HTML, which used to
+  // happen every single second while the timer ran. If a number field
+  // (weight, sets, reps...) happened to be focused right then, that
+  // wholesale DOM replacement yanked focus away mid-keystroke, which is
+  // exactly what made the phone's own keyboard flash open and shut again.
+  // Only a full render() at start/pause/finish (rare, deliberate moments)
+  // is allowed to touch the rest of the page.
+  function patchRestTimerDOM() {
+    var rt = state.restTimer;
+    var disp = document.getElementById("restTimerDisplay");
+    if (disp) {
+      disp.textContent = fmtClock(rt.remaining);
+      disp.className = "rest-timer-display" + (rt.running ? " running" : "") + (rt.justFinished ? " done" : "");
+    }
+    var btn = document.getElementById("restToggleBtn");
+    if (btn) btn.textContent = rt.running ? t("restPauseBtn") : t("restStartBtn");
+  }
+  var restTimerTimeoutHandle = null;
+  function clearRestTimerHandles() {
+    if (restTimerHandle) { clearInterval(restTimerHandle); restTimerHandle = null; }
+    if (restTimerTimeoutHandle) { clearTimeout(restTimerTimeoutHandle); restTimerTimeoutHandle = null; }
+  }
   function tickRestTimer() {
     if (restTimerHandle) clearInterval(restTimerHandle);
     restTimerHandle = setInterval(function () {
@@ -993,14 +1018,48 @@ select.swap-picker {
       if (!rt.running) { clearInterval(restTimerHandle); restTimerHandle = null; return; }
       var left = Math.max(0, Math.round((rt.endAt - Date.now()) / 1000));
       rt.remaining = left;
-      if (left <= 0) {
-        rt.running = false;
-        clearInterval(restTimerHandle);
-        restTimerHandle = null;
-        onRestTimerDone();
-      }
-      render();
+      if (left <= 0) { finishRestTimerIfDue(); return; }
+      patchRestTimerDOM();
     }, 1000);
+  }
+  // A repeating 1-second interval is what phones throttle hardest once the
+  // app is minimized (often clamped to firing about once a minute). A
+  // single setTimeout scheduled for the exact remaining duration is not
+  // subject to that same clamp, so it is far more likely to fire close to
+  // on time even while the app is in the background -- this is what makes
+  // the "rest is over" beep/vibration/notification actually show up while
+  // looking at something else, instead of only appearing once IronLog is
+  // reopened. It re-schedules itself if it ever fires early (drift).
+  function scheduleRestTimerCompletion() {
+    if (restTimerTimeoutHandle) { clearTimeout(restTimerTimeoutHandle); restTimerTimeoutHandle = null; }
+    var rt = state.restTimer;
+    var delay = Math.max(0, rt.endAt - Date.now());
+    restTimerTimeoutHandle = setTimeout(function () {
+      var rt2 = state.restTimer;
+      if (!rt2.running) return; // already finished or paused via the other path
+      var left = Math.max(0, Math.round((rt2.endAt - Date.now()) / 1000));
+      if (left <= 0) finishRestTimerIfDue();
+      else scheduleRestTimerCompletion();
+    }, delay);
+  }
+  function finishRestTimerIfDue() {
+    var rt = state.restTimer;
+    if (!rt.running) return;
+    rt.running = false;
+    rt.remaining = 0;
+    clearRestTimerHandles();
+    onRestTimerDone();
+  }
+  // Phones can fully suspend a backgrounded PWA's timers, so nothing may
+  // have run at all while it was minimized. Checking wall-clock time the
+  // moment the app comes back to front catches a rest period that finished
+  // while unattended and still shows/plays the completion right away.
+  function checkRestTimerOnForeground() {
+    var rt = state.restTimer;
+    if (!rt.running) return;
+    var left = Math.max(0, Math.round((rt.endAt - Date.now()) / 1000));
+    rt.remaining = left;
+    if (left <= 0) finishRestTimerIfDue();
   }
   function onRestTimerDone() {
     state.restTimer.justFinished = true;
@@ -1010,10 +1069,28 @@ select.swap-picker {
     flash(t("restDoneMsg"));
     setTimeout(function () { state.restTimer.justFinished = false; render(); }, 3000);
   }
+  // Asks for notification permission the moment the rest timer is actually
+  // used, rather than requiring the separate daily-reminder toggle to have
+  // been turned on first -- otherwise the "notify me when rest is over"
+  // behavior above silently has nothing to notify with. Only asks once
+  // (skips it once the phone has already granted or blocked it), and only
+  // from within a real tap, since phones require a user gesture for this.
+  function ensureRestNotifPermission() {
+    if (!notifSupported() || Notification.permission !== "default") return;
+    // Fire-and-forget: nothing in the rest timer UI reflects permission
+    // status, so there is nothing to redraw once the phone's own permission
+    // dialog is answered -- avoids an unrelated re-render landing at a
+    // random moment (e.g. while the phone's number pad is still open).
+    try {
+      var req = Notification.requestPermission();
+      if (req && typeof req.then === "function") req.catch(function () {});
+    } catch (e) {}
+  }
   // Always restarts a fresh countdown -- used right after finishing a set,
   // so every checkbox tap resets the clock rather than requiring a separate tap.
   function startRestTimer() {
     ensureAudioCtx();
+    ensureRestNotifPermission();
     var rt = state.restTimer;
     rt.remaining = rt.seconds;
     rt.justFinished = false;
@@ -1021,32 +1098,35 @@ select.swap-picker {
     rt.running = true;
     render();
     tickRestTimer();
+    scheduleRestTimerCompletion();
   }
   function pauseRestTimer() {
     var rt = state.restTimer;
     if (!rt.running) return;
     rt.remaining = Math.max(0, Math.round((rt.endAt - Date.now()) / 1000));
     rt.running = false;
-    if (restTimerHandle) { clearInterval(restTimerHandle); restTimerHandle = null; }
+    clearRestTimerHandles();
     render();
   }
   function toggleRestTimer() {
     ensureAudioCtx();
     var rt = state.restTimer;
     if (rt.running) { pauseRestTimer(); return; }
+    ensureRestNotifPermission();
     if (rt.remaining <= 0) rt.remaining = rt.seconds;
     rt.justFinished = false;
     rt.endAt = Date.now() + rt.remaining * 1000;
     rt.running = true;
     render();
     tickRestTimer();
+    scheduleRestTimerCompletion();
   }
   function resetRestTimer() {
     var rt = state.restTimer;
     rt.running = false;
     rt.justFinished = false;
     rt.remaining = rt.seconds;
-    if (restTimerHandle) { clearInterval(restTimerHandle); restTimerHandle = null; }
+    clearRestTimerHandles();
     render();
   }
   function setRestSeconds(sec) {
@@ -2217,7 +2297,11 @@ select.swap-picker {
     presets.forEach(function (p) {
       html += '<button class="rest-preset' + (rt.seconds === p ? " active" : "") + '" data-rest-preset="' + p + '">' + p + "s</button>";
     });
-    html += "</div></div>";
+    html += "</div>";
+    if (notifPermission() === "default") {
+      html += '<div class="hint">' + t("restBgHint") + "</div>";
+    }
+    html += "</div>";
     return html;
   }
 
@@ -2980,6 +3064,7 @@ select.swap-picker {
         refreshDateInputs(todayStr());
         maybeNotifyNow();
         scheduleReminder();
+        checkRestTimerOnForeground();
         render();
         if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistration) {
           navigator.serviceWorker.getRegistration().then(function (reg) {
