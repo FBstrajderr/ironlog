@@ -395,6 +395,16 @@ textarea.msg-box {
   padding: 8px 0 2px; margin: 0; cursor: pointer; display: flex; align-items: center; gap: 4px;
 }
 .swap-link:active { color: var(--gold); }
+.ex-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.order-btns { display: flex; gap: 4px; }
+.order-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px; width: 34px; height: 34px; min-width: 34px; cursor: pointer;
+  font-size: 11px; display: flex; align-items: center; justify-content: center;
+}
+.order-btn:active { color: var(--gold); border-color: var(--gold); }
+.order-btn:disabled { opacity: 0.25; cursor: default; }
+.order-btn:disabled:active { color: var(--text-muted); border-color: var(--border); }
 .swap-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
 select.swap-picker {
   flex: 1; min-width: 130px; background: var(--panel-2); border: 1px solid var(--border);
@@ -649,7 +659,8 @@ select.swap-picker {
       youTag: "you",
       swapExerciseBtn: "Swap exercise", cancelBtn: "Cancel", addAlternateOption: "+ Add different exercise",
       restTimerLabel: "Rest Timer", restStartBtn: "Start", restPauseBtn: "Pause", restResetBtn: "Reset",
-      restDoneMsg: "Rest is over. Go!"
+      restDoneMsg: "Rest is over. Go!",
+      moveUpLabel: "Move up", moveDownLabel: "Move down"
     },
     sr: {
       tabToday: "Danas", tabPlan: "Treninzi", tabProgress: "Napredak", tabProfile: "Profil",
@@ -719,7 +730,8 @@ select.swap-picker {
       youTag: "ti",
       swapExerciseBtn: "Zameni vezbu", cancelBtn: "Otkazi", addAlternateOption: "+ Dodaj drugu vezbu",
       restTimerLabel: "Tajmer za Odmor", restStartBtn: "Kreni", restPauseBtn: "Pauza", restResetBtn: "Restartuj",
-      restDoneMsg: "Odmor je gotov. Kreni!"
+      restDoneMsg: "Odmor je gotov. Kreni!",
+      moveUpLabel: "Pomeri gore", moveDownLabel: "Pomeri dole"
     }
   };
   function t(key) {
@@ -1553,6 +1565,76 @@ select.swap-picker {
     var cur = slot.obj;
     swapWithinSlot(scope, key, exId, { name: name, sets: cur.sets, reps: cur.reps, weight: cur.weight, unit: cur.unit });
   }
+
+  // ---------- reordering exercises within a workout or a day's session ----------
+  // Swaps two adjacent items in an array in place. Returns false (no-op) if
+  // the move would go past either end.
+  function moveArrayItem(arr, idx, dir) {
+    var newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= arr.length) return false;
+    var tmp = arr[idx];
+    arr[idx] = arr[newIdx];
+    arr[newIdx] = tmp;
+    return true;
+  }
+  // Reorders `target` to follow the sequence of ids given in `order`
+  // (matched via `idOf`); any item with no match in `order` keeps its
+  // existing relative position, appended after the matched ones. Used to
+  // mirror a reorder made on one side (Workouts template or a day's own
+  // session) onto the other, the same way a swapped/edited exercise is
+  // already mirrored via srcExId.
+  function reorderByIdSequence(target, idOf, order) {
+    var byId = {};
+    target.forEach(function (item) { byId[idOf(item)] = item; });
+    var out = [];
+    order.forEach(function (id) {
+      if (byId[id]) { out.push(byId[id]); delete byId[id]; }
+    });
+    target.forEach(function (item) {
+      if (byId[idOf(item)]) out.push(item);
+    });
+    return out;
+  }
+  // Moving an exercise up/down in the Workouts tab reorders the template,
+  // and also carries over to today's own session if today is currently
+  // running that same workout -- so the order you see in Today always
+  // matches the order you set in Workouts.
+  function moveTemplateExercise(tplId, exId, dir) {
+    var tpl = templateById(tplId);
+    if (!tpl) return;
+    var idx = tpl.exercises.findIndex(function (e) { return e.id === exId; });
+    if (idx < 0 || !moveArrayItem(tpl.exercises, idx, dir)) return;
+    persistTemplates();
+    var todayA = state.assignments[todayStr()];
+    if (todayA && todayA.templateId === tpl.id) {
+      var order = tpl.exercises.map(function (e) { return e.id; });
+      todayA.exercises = reorderByIdSequence(todayA.exercises, function (e) { return e.srcExId; }, order);
+      persistAssignments();
+    }
+    render();
+  }
+  // Moving an exercise up/down in a day's session (Today, or a past day's
+  // detail view) reorders that day, and -- exactly like editing its sets,
+  // reps or weight already does -- carries the new order back onto the
+  // workout it came from, so Workouts stays in sync too.
+  function moveDateExercise(dateStr, exId, dir) {
+    var a = state.assignments[dateStr];
+    if (!a) return;
+    var idx = a.exercises.findIndex(function (e) { return e.id === exId; });
+    if (idx < 0 || !moveArrayItem(a.exercises, idx, dir)) return;
+    persistAssignments();
+    if (a.templateId) {
+      var tpl = templateById(a.templateId);
+      if (tpl) {
+        var order = a.exercises.map(function (e) { return e.srcExId; }).filter(Boolean);
+        if (order.length) {
+          tpl.exercises = reorderByIdSequence(tpl.exercises, function (e) { return e.id; }, order);
+          persistTemplates();
+        }
+      }
+    }
+    render();
+  }
   function renderSwapPicker(scope, key, exId) {
     var sw = state.swap;
     var slot = canonicalSlot(scope, key, exId);
@@ -1983,7 +2065,7 @@ select.swap-picker {
     if (exs.length === 0) return html;
 
     var di = getDateInputs(dateStr);
-    exs.forEach(function (ex) {
+    exs.forEach(function (ex, idx) {
       if (isSwapTarget("date", dateStr, ex.id)) {
         html += '<div class="card">' + renderSwapPicker("date", dateStr, ex.id) + "</div>";
         return;
@@ -1998,7 +2080,13 @@ select.swap-picker {
         '<div><label>' + t("sets") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="sets" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.sets + '" /></div>' +
         '<div><label>' + t("reps") + '</label><input type="number" step="1" min="0" inputmode="numeric" data-field="reps" data-sdate="' + dateStr + '" data-id="' + ex.id + '" value="' + s.reps + '" /></div>' +
         "</div></div>" +
-        '<button class="swap-link" data-swap-open="1" data-swap-scope="date" data-swap-key="' + dateStr + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button></div>";
+        '<div class="ex-foot">' +
+        '<div class="order-btns">' +
+        '<button class="order-btn" data-action="moveDateEx" data-dir="-1" data-sdate="' + dateStr + '" data-id="' + ex.id + '"' + (idx === 0 ? " disabled" : "") + ' aria-label="' + t("moveUpLabel") + '">&#9650;</button>' +
+        '<button class="order-btn" data-action="moveDateEx" data-dir="1" data-sdate="' + dateStr + '" data-id="' + ex.id + '"' + (idx === exs.length - 1 ? " disabled" : "") + ' aria-label="' + t("moveDownLabel") + '">&#9660;</button>' +
+        "</div>" +
+        '<button class="swap-link" data-swap-open="1" data-swap-scope="date" data-swap-key="' + dateStr + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button>" +
+        "</div></div>";
     });
     return html;
   }
@@ -2228,7 +2316,7 @@ select.swap-picker {
       html += '<div class="empty">' + t("emptyWorkoutHint") + "</div>";
     }
 
-    tpl.exercises.forEach(function (ex) {
+    tpl.exercises.forEach(function (ex, idx) {
       if (isSwapTarget("tpl", tpl.id, ex.id)) {
         html += '<div class="card"><div class="plan-item">' + renderSwapPicker("tpl", tpl.id, ex.id) + "</div></div>";
         return;
@@ -2242,7 +2330,13 @@ select.swap-picker {
         "</div>" +
         '<button class="trash-btn" data-action="removeTplEx" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '">&#128465;</button>' +
         "</div>" +
-        '<button class="swap-link" data-swap-open="1" data-swap-scope="tpl" data-swap-key="' + tpl.id + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button></div>";
+        '<div class="ex-foot">' +
+        '<div class="order-btns">' +
+        '<button class="order-btn" data-action="moveTplEx" data-dir="-1" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '"' + (idx === 0 ? " disabled" : "") + ' aria-label="' + t("moveUpLabel") + '">&#9650;</button>' +
+        '<button class="order-btn" data-action="moveTplEx" data-dir="1" data-tpl-id="' + tpl.id + '" data-ex-id="' + ex.id + '"' + (idx === tpl.exercises.length - 1 ? " disabled" : "") + ' aria-label="' + t("moveDownLabel") + '">&#9660;</button>' +
+        "</div>" +
+        '<button class="swap-link" data-swap-open="1" data-swap-scope="tpl" data-swap-key="' + tpl.id + '" data-swap-ex="' + ex.id + '">&#8646; ' + t("swapExerciseBtn") + "</button>" +
+        "</div></div>";
     });
     return html;
   }
@@ -2566,6 +2660,11 @@ select.swap-picker {
         if (ex) toggleCompleteForDate(ds, ex);
       });
     });
+    app.querySelectorAll('[data-action="moveDateEx"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        moveDateExercise(el.getAttribute("data-sdate"), el.getAttribute("data-id"), parseInt2(el.getAttribute("data-dir")));
+      });
+    });
     app.querySelectorAll("input[data-field]").forEach(function (el) {
       el.addEventListener("input", function () {
         var ds = el.getAttribute("data-sdate"), id = el.getAttribute("data-id"), f = el.getAttribute("data-field"), p = {};
@@ -2633,7 +2732,12 @@ select.swap-picker {
         removeTemplateExercise(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"));
       });
     });
-    app.querySelectorAll("[data-tpl-id][data-ex-id]").forEach(function (el) {
+    app.querySelectorAll('[data-action="moveTplEx"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        moveTemplateExercise(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"), parseInt2(el.getAttribute("data-dir")));
+      });
+    });
+    app.querySelectorAll("[data-tpl-id][data-ex-id][data-plan-field]").forEach(function (el) {
       var h = function () {
         updateTemplateExField(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"),
           el.getAttribute("data-plan-field"), el.value);
