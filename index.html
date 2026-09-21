@@ -412,9 +412,23 @@ select.swap-picker {
   border-radius: 8px; color: var(--text); padding: 9px; font-weight: 700; font-size: 13px;
 }
 .swap-row .swap-name-input {
-  flex: 1; min-width: 100px; background: var(--panel-2); border: 1px solid var(--border);
+  background: var(--panel-2); border: 1px solid var(--border); width: 100%;
   border-radius: 6px; color: var(--text); font-weight: 700; padding: 9px; font-size: 14px;
 }
+.ac-wrap { position: relative; }
+.swap-row .ac-wrap { flex: 1; min-width: 100px; }
+.ac-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; overflow-y: auto; max-height: 220px; display: none;
+}
+.ac-list.show { display: block; }
+.ac-item {
+  padding: 10px 12px; font-size: 14px; color: var(--text); cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:active { background: var(--panel); color: var(--gold); }
 .rest-timer-card { text-align: center; }
 .rest-timer-display {
   font-family: "SFMono-Regular", Consolas, monospace; font-size: 42px; font-weight: 900;
@@ -1748,8 +1762,9 @@ select.swap-picker {
       html += '<option value="' + le.id + '">' + esc(le.name) + "</option>";
     });
     html += "</select>" +
-      '<input class="swap-name-input" placeholder="' + t("exPlaceholder") + '" value="' + esc(sw ? sw.newName : "") + '" ' +
+      '<div class="ac-wrap"><input class="swap-name-input" autocomplete="off" placeholder="' + t("exPlaceholder") + '" value="' + esc(sw ? sw.newName : "") + '" ' +
       'data-swap-name="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '" />' +
+      '<div class="ac-list" id="swapNameAC"></div></div>' +
       '<button class="add-btn swap-confirm-btn" data-swap-confirm="1" data-swap-scope="' + scope + '" data-swap-key="' + esc(key) + '" data-swap-ex="' + exId + '">&#10003;</button>' +
       (alts.length ? '<button class="ghost-btn" data-swap-back="1">&#8592;</button>' : "") +
       '<button class="ghost-btn" data-swap-cancel="1" aria-label="' + t("cancelBtn") + '">&#10005;</button>' +
@@ -2445,7 +2460,9 @@ select.swap-picker {
     });
     html += "</select></div>";
     if (!state.newExLibId) {
-      html += '<div class="field name"><label>' + t("newExerciseNameLabel") + '</label><input id="newExName" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" /></div>';
+      html += '<div class="field name"><label>' + t("newExerciseNameLabel") + '</label>' +
+        '<div class="ac-wrap"><input id="newExName" autocomplete="off" placeholder="' + t("exPlaceholder") + '" value="' + esc(state.newEx.name) + '" />' +
+        '<div class="ac-list" id="newExNameAC"></div></div></div>';
     }
     html += '<div class="field num"><label>' + t("sets") + '</label><input id="newExSets" type="number" inputmode="numeric" value="' + state.newEx.sets + '" /></div>' +
       '<div class="field num"><label>' + t("reps") + '</label><input id="newExReps" type="number" inputmode="numeric" value="' + state.newEx.reps + '" /></div>' +
@@ -2750,6 +2767,61 @@ select.swap-picker {
   }
 
   // ---------- listeners ----------
+  // Wires a plain text input up to a live suggestions dropdown drawn from the
+  // shared exercise library, so typing "Bench Press" offers the exercise you
+  // already have instead of quietly letting a near-duplicate get created.
+  // Deliberately hand-built rather than a native <datalist> -- datalist's
+  // suggestion popup is unreliable on iOS Safari, and this needs to work the
+  // same on every phone. Suggestions are patched directly into their own
+  // small list element (never a full render()), so this never interrupts
+  // typing or closes the keyboard; onPick only fires on an explicit tap or
+  // on leaving the field with an exact (case-insensitive) name match, and
+  // that is the one moment a full render() happens, on purpose.
+  function setupExerciseAutocomplete(inputEl, listEl, onPick) {
+    if (!inputEl || !listEl) return;
+    function matches() {
+      var q = inputEl.value.trim().toLowerCase();
+      if (!q) return [];
+      return state.library.filter(function (le) { return le.name.toLowerCase().indexOf(q) !== -1; })
+        .sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .slice(0, 6);
+    }
+    function hide() { listEl.classList.remove("show"); listEl.innerHTML = ""; }
+    function show() {
+      var m = matches();
+      if (!m.length) { hide(); return; }
+      listEl.innerHTML = m.map(function (le) {
+        return '<div class="ac-item" data-ac-id="' + le.id + '">' + esc(le.name) + "</div>";
+      }).join("");
+      listEl.classList.add("show");
+    }
+    inputEl.addEventListener("input", show);
+    inputEl.addEventListener("focus", show);
+    listEl.addEventListener("mousedown", function (ev) {
+      var item = ev.target.closest(".ac-item");
+      if (!item) return;
+      ev.preventDefault();
+      var le = libraryEntry(item.getAttribute("data-ac-id"));
+      hide();
+      // Blurring here on purpose, before onPick: tapping this item is about
+      // to move focus off the field one way or another, which fires the
+      // field's own plain "this field changed" handler with whatever was
+      // still typed (e.g. "Ben"). Forcing that to happen now, before onPick
+      // writes the real pick, guarantees onPick's data is what's left
+      // standing -- otherwise that stale handler can fire again reentrantly
+      // while onPick's render() is swapping out this field's row, landing
+      // AFTER onPick and quietly overwriting the exercise it just picked.
+      inputEl.blur();
+      if (le) onPick(le);
+    });
+    inputEl.addEventListener("blur", function () {
+      var q = inputEl.value.trim().toLowerCase();
+      var exact = q && state.library.find(function (le) { return le.name.trim().toLowerCase() === q; });
+      hide();
+      if (exact) onPick(exact);
+    });
+  }
+
   function attachListeners() {
     // Any field meant for a decimal number: convert a typed comma to a period
     // as they type, so a keyboard that only has "," still produces a valid number.
@@ -2870,12 +2942,23 @@ select.swap-picker {
         .forEach(function (pair) {
           var el = document.getElementById(pair[0]);
           if (!el) return;
-          var h = function () { state.newEx[pair[1]] = el.value; };
+          // isConnected guards against a stale "change" firing on THIS element
+          // after it has already been torn down by a render() triggered from
+          // elsewhere (e.g. picking an autocomplete suggestion out from under
+          // it) -- without it, that reentrant event would silently overwrite
+          // the freshly-picked exercise's name with whatever half-typed text
+          // was still sitting in the old, now-detached input.
+          var h = function () { if (el.isConnected) state.newEx[pair[1]] = el.value; };
           el.addEventListener("input", h);
           el.addEventListener("change", h);
         });
       addBtn.addEventListener("click", addExerciseToTemplate);
     }
+    setupExerciseAutocomplete(document.getElementById("newExName"), document.getElementById("newExNameAC"), function (le) {
+      state.newExLibId = le.id;
+      state.newEx = { name: le.name, sets: le.sets, reps: le.reps, weight: le.weight, unit: le.unit };
+      render();
+    });
     app.querySelectorAll('[data-action="removeTplEx"]').forEach(function (el) {
       el.addEventListener("click", function () {
         removeTemplateExercise(el.getAttribute("data-tpl-id"), el.getAttribute("data-ex-id"));
@@ -2929,6 +3012,9 @@ select.swap-picker {
         if (ev.key === "Enter") {
           swapToNewName(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), el.value);
         }
+      });
+      setupExerciseAutocomplete(el, document.getElementById("swapNameAC"), function (le) {
+        swapToLibraryEntry(el.getAttribute("data-swap-scope"), el.getAttribute("data-swap-key"), el.getAttribute("data-swap-ex"), le.id);
       });
     });
     app.querySelectorAll("[data-swap-confirm]").forEach(function (el) {
